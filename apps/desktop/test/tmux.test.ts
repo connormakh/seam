@@ -1,0 +1,77 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { rmSync } from 'node:fs'
+import { Tmux } from '../src/main/tmux/tmux'
+import { makeTestTmux, waitFor } from './helpers'
+
+describe('Tmux (real server)', () => {
+  let tmux: Tmux
+  let dir: string
+
+  beforeAll(() => {
+    ;({ tmux, dir } = makeTestTmux())
+  })
+
+  afterAll(async () => {
+    await tmux.killServer()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('lists nothing before the server exists', async () => {
+    expect(await tmux.listSessions()).toEqual([])
+  })
+
+  it('creates a tagged session and lists it', async () => {
+    await tmux.newSession({ id: 'shell-a', kind: 'shell', cwd: dir, command: ['sh'], title: 'tests' })
+    expect(await tmux.hasSession('shell-a')).toBe(true)
+
+    const [s] = await tmux.listSessions()
+    expect(s).toMatchObject({ id: 'shell-a', kind: 'shell', title: 'tests', attachedClients: 0, dead: false })
+    expect(s?.panePid).toBeGreaterThan(0)
+  })
+
+  it('ignores sessions Seam did not create', async () => {
+    await tmux.run(['new-session', '-d', '-s', 'foreign', 'sh'])
+    const ids = (await tmux.listSessions()).map((s) => s.id)
+    expect(ids).toContain('shell-a')
+    expect(ids).not.toContain('foreign')
+    await tmux.killSession('foreign')
+  })
+
+  it('types into a pane and captures the output', async () => {
+    await tmux.sendKeys('shell-a', 'echo seam-$((40+2))', { literal: true, enter: true })
+    const screen = await waitFor(async () => {
+      const text = await tmux.capturePane('shell-a')
+      return text.includes('seam-42') ? text : null
+    })
+    expect(screen).toContain('seam-42')
+  })
+
+  it('passes environment variables to the session', async () => {
+    await tmux.newSession({ id: 'env-test', kind: 'claude', cwd: dir, command: ['sh'], env: { SEAM_PROBE: 'hello-env' } })
+    await tmux.sendKeys('env-test', 'echo "probe=$SEAM_PROBE"', { literal: true, enter: true })
+    await waitFor(async () => (await tmux.capturePane('env-test')).includes('probe=hello-env'))
+    await tmux.killSession('env-test')
+  })
+
+  it('updates the title', async () => {
+    await tmux.setTitle('shell-a', 'renamed')
+    const [s] = await tmux.listSessions()
+    expect(s?.title).toBe('renamed')
+  })
+
+  it('kills sessions, and killing twice is harmless', async () => {
+    await tmux.killSession('shell-a')
+    await tmux.killSession('shell-a')
+    expect(await tmux.hasSession('shell-a')).toBe(false)
+  })
+
+  it('rejects ids tmux would misparse', async () => {
+    await expect(tmux.killSession('a:b')).rejects.toThrow(/invalid terminal id/)
+    expect(() => tmux.attachCommand('x.y')).toThrow(/invalid terminal id/)
+  })
+
+  it('builds an attach command on the private socket', () => {
+    const { args } = tmux.attachCommand('abc')
+    expect(args).toEqual(['-u', '-L', tmux.opts.socketName, '-f', tmux.opts.configPath, 'attach-session', '-t', '=abc'])
+  })
+})
