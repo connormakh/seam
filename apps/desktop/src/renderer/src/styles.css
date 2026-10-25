@@ -1,0 +1,62 @@
+:root {
+  --bg: #16181d;
+  --bg-raised: #1d2027;
+  --border: #2b2f38;
+  --text: #e6e8ee;
+  --text-muted: #8a909c;
+  --accent: #6aa2ff;
+  --titlebar-height: 38px;
+  color-scheme: dark;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Leaves room for the macOS traffic lights and makes the bar draggable. */
+.titlebar {
+  height: var(--titlebar-height);
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-left: 84px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar-name {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.muted {
+  color: var(--text-muted);
+}
