@@ -1,8 +1,8 @@
-import { app, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC, type AppInfo } from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
 import type { Runtime } from './runtime'
-import { asCreateOptions, asId, asSize } from './validate'
+import { asCreateOptions, asCreatePairOptions, asId, asSize } from './validate'
 
 function requireTerminals(rt: Runtime): TerminalService {
   if (!rt.terminals) throw new Error('tmux is not installed')
@@ -21,7 +21,27 @@ function quietly(fn: () => void): void {
   }
 }
 
-export function registerIpc(rt: Runtime): void {
+export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
+  // The picker opens where the last pick was, which is usually the next project's neighbour.
+  let lastFolder = opts.homeDir
+  ipcMain.handle(IPC.pickFolder, async (e): Promise<string | null> => {
+    // Headless smoke tests cannot click a native dialog.
+    const smoke = process.env['SEAM_SMOKE_PICK_FOLDER']
+    if (smoke) return smoke
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const pickOpts: Electron.OpenDialogOptions = {
+      title: 'Choose a project folder',
+      buttonLabel: 'Open Pair',
+      defaultPath: lastFolder,
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result = win ? await dialog.showOpenDialog(win, pickOpts) : await dialog.showOpenDialog(pickOpts)
+    const picked = result.canceled ? undefined : result.filePaths[0]
+    if (!picked) return null
+    lastFolder = picked
+    return picked
+  })
+
   ipcMain.handle(IPC.appInfo, (): AppInfo => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -32,6 +52,9 @@ export function registerIpc(rt: Runtime): void {
 
   ipcMain.handle(IPC.terminalList, () => (rt.terminals ? rt.terminals.list() : []))
   ipcMain.handle(IPC.terminalCreate, (_e, opts: unknown) => requireTerminals(rt).create(asCreateOptions(opts)))
+  ipcMain.handle(IPC.terminalCreatePair, (_e, opts: unknown) =>
+    requireTerminals(rt).createPair(asCreatePairOptions(opts))
+  )
   ipcMain.handle(IPC.terminalAttach, (_e, id: unknown, size: unknown) =>
     requireTerminals(rt).attach(asId(id), asSize(size))
   )

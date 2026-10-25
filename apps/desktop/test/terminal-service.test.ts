@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import { spawn } from 'node-pty'
 import type { TerminalExitEvent } from '@shared/ipc'
 import { TerminalService } from '../src/main/terminals/terminal-service'
@@ -19,6 +21,7 @@ describe('TerminalService (real tmux + node-pty)', () => {
       tmux,
       spawnPty: spawn,
       defaultCwd: dir,
+      claudeCommand: () => ['sh', '-c', 'echo "fake-claude-ready in $(pwd)"; exec sh'],
       events: {
         data: (id, data) => output.set(id, (output.get(id) ?? '') + data),
         exit: (e) => exits.push(e)
@@ -120,6 +123,25 @@ describe('TerminalService (real tmux + node-pty)', () => {
     expect(service.isAttached(t.id)).toBe(false)
   })
 
+  it('creates a linked Claude + shell pair in one folder', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'seam-project-'))
+    const { claude, shell } = await service.createPair({ cwd: project })
+
+    expect(claude).toMatchObject({ kind: 'claude', title: basename(project), pairId: shell.id, cwd: project })
+    expect(shell).toMatchObject({ kind: 'shell', title: 'shell', pairId: claude.id, cwd: project })
+
+    await service.attach(claude.id, { cols: 100, rows: 30 })
+    await seen(claude.id, `fake-claude-ready in ${project}`)
+
+    await service.attach(shell.id, { cols: 100, rows: 30 })
+    service.write(shell.id, 'echo "pair=$SEAM_PAIR_ID"\r')
+    await seen(shell.id, `pair=${claude.id}`)
+
+    await service.kill(claude.id)
+    await service.kill(shell.id)
+    rmSync(project, { recursive: true, force: true })
+  })
+
   it('refuses to attach to a terminal that is not running', async () => {
     await expect(service.attach('t-missing', { cols: 80, rows: 24 })).rejects.toThrow(/not running/)
   })
@@ -132,7 +154,7 @@ describe('TerminalService open state', () => {
 
   beforeAll(() => {
     ;({ tmux, dir } = makeTestTmux())
-    service = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, events: { data: () => {}, exit: () => {} } })
+    service = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeCommand: () => ['sh'], events: { data: () => {}, exit: () => {} } })
   })
 
   afterAll(async () => {
@@ -148,7 +170,7 @@ describe('TerminalService open state', () => {
     await service.setOpen(b.id, false)
 
     // A new service over the same server is what a relaunch looks like.
-    const relaunched = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, events: { data: () => {}, exit: () => {} } })
+    const relaunched = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeCommand: () => ['sh'], events: { data: () => {}, exit: () => {} } })
     const byId = new Map((await relaunched.list()).map((t) => [t.id, t]))
     expect(byId.get(a.id)?.open).toBe(true)
     expect(byId.get(b.id)?.open).toBe(false)

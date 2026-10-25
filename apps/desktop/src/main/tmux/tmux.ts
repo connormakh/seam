@@ -41,6 +41,8 @@ export interface NewSessionOptions {
   title?: string
   /** Whether a tab should show this terminal. Defaults to true. */
   open?: boolean
+  /** The other half of a Claude + shell pair, if this terminal belongs to one. */
+  pairId?: string
 }
 
 export interface TmuxSession {
@@ -59,6 +61,8 @@ export interface TmuxSession {
   open: boolean
   /** tmux's own session number, increasing in creation order. */
   serial: number
+  /** The other half of a Claude + shell pair, or null. */
+  pairId: string | null
 }
 
 export class TmuxError extends Error {
@@ -170,11 +174,16 @@ export class Tmux {
     if (o.command?.length) args.push(...o.command)
     await this.run(args)
 
-    // set-option takes a pane target, so the exact-match session form needs a trailing ':'.
+    if (o.pairId !== undefined) assertId(o.pairId)
+    // set-option takes a pane target, so the exact-match session form needs a
+    // trailing ':'. A lone ';' argument separates commands in one tmux call.
     const target = `=${o.id}:`
-    await this.run(['set-option', '-t', target, '@seam-kind', o.kind])
-    await this.run(['set-option', '-t', target, '@seam-title', oneLine(o.title ?? '')])
-    await this.run(['set-option', '-t', target, '@seam-open', o.open === false ? '0' : '1'])
+    await this.run([
+      ...['set-option', '-t', target, '@seam-kind', o.kind, ';'],
+      ...['set-option', '-t', target, '@seam-title', oneLine(o.title ?? ''), ';'],
+      ...['set-option', '-t', target, '@seam-open', o.open === false ? '0' : '1', ';'],
+      ...['set-option', '-t', target, '@seam-pair', o.pairId ?? '']
+    ])
   }
 
   async hasSession(id: string): Promise<boolean> {
@@ -200,7 +209,8 @@ export class Tmux {
       '#{session_attached}',
       '#{pane_dead}',
       '#{@seam-open}',
-      '#{session_id}'
+      '#{session_id}',
+      '#{@seam-pair}'
     ]
     let out: string
     try {
@@ -214,7 +224,7 @@ export class Tmux {
     const sessions: TmuxSession[] = []
     for (const line of out.split('\n')) {
       if (!line) continue
-      const [id, kind, title, cwd, cmd, pid, created, attached, dead, open, sessionId] = line.split(SEP)
+      const [id, kind, title, cwd, cmd, pid, created, attached, dead, open, sessionId, pair] = line.split(SEP)
       if (!id || seen.has(id)) continue // one entry per session (first pane)
       if (kind !== 'shell' && kind !== 'claude') continue // not ours
       seen.add(id)
@@ -230,7 +240,8 @@ export class Tmux {
         dead: dead === '1',
         open: open !== '0',
         // "$12" -> 12; tmux hands these out in creation order.
-        serial: Number((sessionId ?? '').replace('$', '')) || 0
+        serial: Number((sessionId ?? '').replace('$', '')) || 0,
+        pairId: pair && ID_PATTERN.test(pair) ? pair : null
       })
     }
     // session_created has 1 s resolution; the serial breaks ties.

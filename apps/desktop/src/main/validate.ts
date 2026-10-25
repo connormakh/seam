@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import type { CreateTerminalOptions, TerminalSize } from '@shared/ipc'
+import type { CreatePairOptions, CreateTerminalOptions, TerminalSize } from '@shared/ipc'
 
 /**
  * Checks for everything that crosses from the renderer into main. Anything
@@ -54,6 +54,16 @@ export function asCreateOptions(v: unknown): CreateTerminalOptions {
   const out: CreateTerminalOptions = {}
   if (o['kind'] === 'shell' || o['kind'] === 'claude') out.kind = o['kind']
   if (o['cwd'] !== undefined) out.cwd = asDirectory(o['cwd'])
+  if (typeof o['title'] === 'string') {
+    const title = cleanTitle(o['title'])
+    if (title) out.title = title
+  }
+  return out
+}
+
+export function asCreatePairOptions(v: unknown): CreatePairOptions {
+  const o = (v ?? {}) as Record<string, unknown>
+  const out: CreatePairOptions = { cwd: asDirectory(o['cwd']) }
   if (typeof o['title'] === 'string') {
     const title = cleanTitle(o['title'])
     if (title) out.title = title

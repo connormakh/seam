@@ -1,6 +1,9 @@
 import type { IPty, IPtyForkOptions } from 'node-pty'
+import { basename } from 'node:path'
 import type {
+  CreatePairOptions,
   CreateTerminalOptions,
+  PairInfo,
   TerminalExitEvent,
   TerminalInfo,
   TerminalSize
@@ -21,6 +24,8 @@ export interface TerminalServiceOptions {
   spawnPty: SpawnPty
   events: TerminalEvents
   defaultCwd: string
+  /** argv that starts Claude Code for the Claude side of a pair. */
+  claudeCommand: () => string[]
 }
 
 interface Attachment {
@@ -73,6 +78,46 @@ export class TerminalService {
     const info = (await this.list()).find((t) => t.id === id)
     if (!info) throw new Error(`terminal ${id} exited immediately after starting`)
     return info
+  }
+
+  /**
+   * A Claude Code session and its companion shell, both rooted at `cwd`
+   * and linked through @seam-pair so they reopen together.
+   */
+  async createPair(opts: CreatePairOptions): Promise<PairInfo> {
+    const claudeId = newTerminalId()
+    const shellId = newTerminalId()
+    const title = opts.title ?? (basename(opts.cwd) || opts.cwd)
+    const env = (self: string, other: string) => ({ SEAM_TERMINAL_ID: self, SEAM_PAIR_ID: other })
+
+    await this.o.tmux.newSession({
+      id: claudeId,
+      kind: 'claude',
+      cwd: opts.cwd,
+      title,
+      command: this.o.claudeCommand(),
+      env: env(claudeId, shellId),
+      pairId: shellId
+    })
+    try {
+      await this.o.tmux.newSession({
+        id: shellId,
+        kind: 'shell',
+        cwd: opts.cwd,
+        title: 'shell',
+        env: env(shellId, claudeId),
+        pairId: claudeId
+      })
+    } catch (err) {
+      await this.o.tmux.killSession(claudeId)
+      throw err
+    }
+
+    const byId = new Map((await this.list()).map((t) => [t.id, t]))
+    const claude = byId.get(claudeId)
+    const shell = byId.get(shellId)
+    if (!claude || !shell) throw new Error('the pair exited immediately after starting')
+    return { claude, shell }
   }
 
   async attach(id: string, size: TerminalSize): Promise<void> {
@@ -195,7 +240,8 @@ export class TerminalService {
       currentCommand: s.currentCommand,
       createdAt: s.createdAt,
       attached: this.attachments.has(s.id),
-      open: s.open
+      open: s.open,
+      pairId: s.pairId
     }
   }
 }

@@ -61,7 +61,7 @@ void app.whenReady().then(async () => {
     resourcesDir: process.resourcesPath,
     send: (channel, payload) => mainWindow?.webContents.send(channel, payload)
   })
-  registerIpc(runtime)
+  registerIpc(runtime, { homeDir: app.getPath('home') })
   installMenu(() => mainWindow, { isDev: !app.isPackaged })
   mainWindow = createWindow()
 

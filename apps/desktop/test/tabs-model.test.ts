@@ -10,7 +10,8 @@ const term = (id: string, open = true): TerminalInfo => ({
   currentCommand: 'zsh',
   createdAt: 0,
   attached: false,
-  open
+  open,
+  pairId: null
 })
 
 const ids = (m: TabsModel): string[] => m.tabs.map((t) => t.info.id)

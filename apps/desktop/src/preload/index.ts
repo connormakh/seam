@@ -26,6 +26,7 @@ ipcRenderer.on(IPC.menuCommand, (_e, command: MenuCommand) => {
 
 const api: SeamApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
+  pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   onMenuCommand: (listener) => {
     menuListeners.add(listener)
     return () => menuListeners.delete(listener)
@@ -33,6 +34,7 @@ const api: SeamApi = {
   terminals: {
     list: () => ipcRenderer.invoke(IPC.terminalList),
     create: (opts) => ipcRenderer.invoke(IPC.terminalCreate, opts ?? {}),
+    createPair: (opts) => ipcRenderer.invoke(IPC.terminalCreatePair, opts),
     attach: (id, size) => ipcRenderer.invoke(IPC.terminalAttach, id, size),
     detach: (id) => ipcRenderer.invoke(IPC.terminalDetach, id),
     kill: (id) => ipcRenderer.invoke(IPC.terminalKill, id),

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
+import { claudeCommand } from './terminals/claude-command'
 import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
 import { TerminalService } from './terminals/terminal-service'
 import { resolveTmuxBinary } from './tmux/binary'
@@ -70,6 +71,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmux,
     spawnPty: spawn,
     defaultCwd: o.homeDir,
+    claudeCommand: () => claudeCommand(),
     events: {
       data: (id, data) => o.send(IPC.terminalData, { id, data }),
       exit: (event) => o.send(IPC.terminalExit, event)
