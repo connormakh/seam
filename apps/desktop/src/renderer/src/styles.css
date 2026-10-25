@@ -307,3 +307,9 @@ code {
   color: var(--text-muted);
   font-size: 15px;
 }
+
+/* tmux owns scrollback (xterm keeps none), so xterm's own scrollbar only
+   ever shows a stale size. Wheel scrolling goes to tmux history. */
+.terminal-host .scrollbar {
+  display: none !important;
+}
