@@ -13,7 +13,7 @@ import { DEFAULT_POLICY } from './mcp/policy'
 import { Tools } from './mcp/tools'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
-import { claudeCommand, userShell } from './terminals/claude-command'
+import { claudeCommand, shellOnlyArgs, userShell } from './terminals/claude-command'
 import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
 import { TerminalService } from './terminals/terminal-service'
 import { resolveTmuxBinary } from './tmux/binary'
@@ -47,9 +47,24 @@ export interface Runtime {
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
+  /** Settings that take effect when the next pair starts. */
+  settings: RuntimeSettings
+}
+
+/**
+ * Things that are decided when Claude is launched, so changing one affects
+ * the next pair rather than the ones already running.
+ */
+export interface RuntimeSettings {
+  /** Take Bash away, so every command Claude runs goes through the shell. */
+  shellOnly: boolean
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
+  // Off by default: with no allowlist UI yet, routing everything through the
+  // shell means a card per command.
+  const settings: RuntimeSettings = { shellOnly: process.env['SEAM_SHELL_ONLY'] === '1' }
+
   const binary = resolveTmuxBinary({
     override: process.env['SEAM_TMUX'],
     bundledDir: o.isPackaged ? join(o.resourcesDir, 'bin') : undefined,
@@ -65,7 +80,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       approvals: null,
       audit: null,
       tmuxVersion: null,
-      terminals: null
+      terminals: null,
+      settings
     }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
@@ -100,7 +116,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       approvals: null,
       audit: null,
       tmuxVersion: null,
-      terminals: null
+      terminals: null,
+      settings
     }
   }
 
@@ -193,7 +210,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
         serverPath: mcpServerPath,
         nodePath: process.execPath
       })
-      return { command: claudeCommand(shell, ['--mcp-config', configPath]), env }
+      const args = ['--mcp-config', configPath, ...(settings.shellOnly ? shellOnlyArgs('shell') : [])]
+      return { command: claudeCommand(shell, args), env }
     },
     shellLaunch: (id) =>
       shellLaunch({
@@ -220,7 +238,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     }
   })
 
-  return { tmux, eventsDir, commands, context, control, approvals, audit, tmuxVersion, terminals }
+  return { tmux, eventsDir, commands, context, control, approvals, audit, tmuxVersion, terminals, settings }
 }
 
 /**

@@ -9,7 +9,17 @@ import { IPC, type MenuCommand } from '@shared/ipc'
  * macOS uses Cmd. Elsewhere Ctrl+Shift, because plain Ctrl+W, Ctrl+T and
  * friends belong to the shell (Ctrl+W deletes a word).
  */
-export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev: boolean }): void {
+export interface MenuSettings {
+  /** Current value, read when the menu is built. */
+  shellOnly: () => boolean
+  /** The user flipped it; takes effect on the next pair. */
+  setShellOnly: (value: boolean) => void
+}
+
+export function installMenu(
+  getWindow: () => BrowserWindow | null,
+  opts: { isDev: boolean; settings?: MenuSettings }
+): void {
   const mac = process.platform === 'darwin'
   const key = (k: string, extra = ''): string => (mac ? `Cmd+${extra}${k}` : `Ctrl+Shift+${extra}${k}`)
   const send = (command: MenuCommand): void => getWindow()?.webContents.send(IPC.menuCommand, command)
@@ -77,6 +87,17 @@ export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev
           label: 'Send Last Command to Claude',
           accelerator: mac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
           click: () => send({ type: 'send-last' })
+        },
+        { type: 'separator' },
+        {
+          id: 'shell-only',
+          // Claude Code takes the flag at launch, so this cannot change a
+          // session already running. The label says so rather than looking broken.
+          label: 'Run Claude Commands Here (New Pairs)',
+          type: 'checkbox',
+          checked: opts.settings?.shellOnly() ?? false,
+          enabled: Boolean(opts.settings),
+          click: (item) => opts.settings?.setShellOnly(item.checked)
         }
       ]
     },

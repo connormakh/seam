@@ -62,7 +62,15 @@ void app.whenReady().then(async () => {
     send: (channel, payload) => mainWindow?.webContents.send(channel, payload)
   })
   registerIpc(runtime, { homeDir: app.getPath('home') })
-  installMenu(() => mainWindow, { isDev: !app.isPackaged })
+  installMenu(() => mainWindow, {
+    isDev: !app.isPackaged,
+    settings: {
+      shellOnly: () => runtime?.settings.shellOnly ?? false,
+      setShellOnly: (value) => {
+        if (runtime) runtime.settings.shellOnly = value
+      }
+    }
+  })
   mainWindow = createWindow()
 
   app.on('activate', () => {

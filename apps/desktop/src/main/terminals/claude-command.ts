@@ -30,6 +30,26 @@ export function userShell(): string {
  * not paste into, so every send was refused. With it, claude leads its own
  * foreground group, exactly as if the user had typed `claude` at a prompt.
  */
+/**
+ * Flags that make the companion shell the only way Claude can run anything.
+ *
+ * Taking Bash away is what does it: with no shell tool of its own, Claude
+ * reaches for seam's run_in_shell, which types into the terminal the user is
+ * watching and keeps whatever that shell is holding. The sentence is there so
+ * it knows which shell without having to look first, and so it says what it
+ * is about to run before a card appears.
+ *
+ * No apostrophes or dollars in the prompt: it is quoted into a /bin/sh -c.
+ */
+export function shellOnlyArgs(shellName: string): string[] {
+  return [
+    '--disallowedTools',
+    'Bash',
+    '--append-system-prompt',
+    `Seam: your Bash tool is off in this session. Run shell commands with the seam MCP tool run_in_shell, on the shell named ${shellName}. That is a terminal the user is watching, and it keeps its state between commands: running servers, activated environments, exported variables. The user may be asked to approve each command, so say what you are about to run before you run it.`
+  ]
+}
+
 export function claudeCommand(shell: string = userShell(), claudeArgs: string[] = []): string[] {
   if (!/^\/[\w./+-]+$/.test(shell)) throw new Error(`unexpected shell path: ${shell}`)
   // Arguments carry paths now (--mcp-config), and on macOS those contain
