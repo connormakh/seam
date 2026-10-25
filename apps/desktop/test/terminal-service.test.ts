@@ -75,6 +75,33 @@ describe('TerminalService (real tmux + node-pty)', () => {
     expect(clients.trim().split('\n')).toEqual(['120x40'])
   })
 
+  it('survives attach, detach, attach without awaiting (React StrictMode)', async () => {
+    const t = await service.create()
+    const clients = async () =>
+      (await tmux.run(['list-clients', '-t', `=${t.id}`, '-F', '#{client_tty}'])).split('\n').filter(Boolean).length
+
+    const first = service.attach(t.id, { cols: 80, rows: 24 })
+    service.detach(t.id)
+    const second = service.attach(t.id, { cols: 100, rows: 30 })
+    await Promise.all([first, second])
+
+    await waitFor(async () => (await clients()) === 1)
+    // Give a leaked client time to show up before asserting there is none.
+    await new Promise((r) => setTimeout(r, 300))
+    expect(await clients()).toBe(1)
+
+    // Output arrives exactly once.
+    output.delete(t.id)
+    service.write(t.id, 'echo "$((1+1))xyz"\r')
+    await seen(t.id, '2xyz')
+    await new Promise((r) => setTimeout(r, 200))
+    expect((output.get(t.id) ?? '').split('2xyz').length - 1).toBe(1)
+
+    service.detach(t.id)
+    await waitFor(async () => (await clients()) === 0)
+    expect(exits.find((e) => e.id === t.id)).toBeUndefined()
+  })
+
   it('reports ended when the shell exits', async () => {
     const t = await service.create()
     await service.attach(t.id, { cols: 80, rows: 24 })

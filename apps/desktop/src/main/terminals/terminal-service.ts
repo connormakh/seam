@@ -24,10 +24,13 @@ export interface TerminalServiceOptions {
 }
 
 interface Attachment {
-  pty: IPty
+  /** Null while attach() is still checking the session; set once spawned. */
+  pty: IPty | null
   batcher: OutputBatcher
   /** Set when Seam ended the client on purpose, so its exit is not reported. */
   detaching: boolean
+  /** Latest size asked for, applied when the pty spawns. */
+  size: TerminalSize
 }
 
 const MIN_COLS = 2
@@ -75,48 +78,74 @@ export class TerminalService {
   async attach(id: string, size: TerminalSize): Promise<void> {
     const existing = this.attachments.get(id)
     if (existing) {
-      // Already streaming (e.g. a re-mounted view): just take the new size.
+      // Already streaming or about to (e.g. a re-mounted view): take the new size.
+      existing.size = size
       this.resize(id, size)
       return
     }
-    if (!(await this.o.tmux.hasSession(id))) {
+
+    // Register before the first await, so a detach() or a second attach()
+    // during the session check sees this attachment instead of racing it.
+    const attachment: Attachment = {
+      pty: null,
+      batcher: new OutputBatcher((data) => {
+        // Only the current attachment may speak for this terminal.
+        if (this.attachments.get(id) === attachment) this.o.events.data(id, data)
+      }),
+      detaching: false,
+      size
+    }
+    this.attachments.set(id, attachment)
+    const isCurrent = (): boolean => !attachment.detaching && this.attachments.get(id) === attachment
+
+    let alive: boolean
+    try {
+      alive = await this.o.tmux.hasSession(id)
+    } catch (err) {
+      if (this.attachments.get(id) === attachment) this.attachments.delete(id)
+      throw err
+    }
+    if (!isCurrent()) return // detached while we were checking: nothing to do
+    if (!alive) {
+      this.attachments.delete(id)
       throw new Error(`terminal ${id} is not running`)
     }
 
-    const { cols, rows } = clampSize(size)
+    const { cols, rows } = clampSize(attachment.size)
     const { file, args } = this.o.tmux.attachCommand(id)
-    const pty = this.o.spawnPty(file, args, {
-      name: 'xterm-256color',
-      cols,
-      rows,
-      cwd: this.o.defaultCwd,
-      env: { ...this.o.tmux.processEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor' }
-    })
-
-    const attachment: Attachment = {
-      pty,
-      batcher: new OutputBatcher((data) => this.o.events.data(id, data)),
-      detaching: false
+    let pty: IPty
+    try {
+      pty = this.o.spawnPty(file, args, {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: this.o.defaultCwd,
+        env: { ...this.o.tmux.processEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+      })
+    } catch (err) {
+      this.attachments.delete(id)
+      throw new Error(`could not start a terminal client: ${String(err)}`)
     }
-    this.attachments.set(id, attachment)
+    attachment.pty = pty
 
     pty.onData((chunk) => attachment.batcher.push(chunk))
     pty.onExit(() => {
+      const wasCurrent = isCurrent()
       attachment.batcher.dispose()
-      // A newer attachment may already have replaced this one.
       if (this.attachments.get(id) === attachment) this.attachments.delete(id)
-      if (attachment.detaching) return
-      void this.o.tmux.hasSession(id).then((alive) => this.o.events.exit({ id, ended: !alive }))
+      // Report only exits nobody asked for, from the client that was live.
+      if (!wasCurrent) return
+      void this.o.tmux.hasSession(id).then((stillAlive) => this.o.events.exit({ id, ended: !stillAlive }))
     })
   }
 
   detach(id: string): void {
     const a = this.attachments.get(id)
     if (!a) return
-    a.detaching = true
     a.batcher.flush()
+    a.detaching = true
     this.attachments.delete(id)
-    a.pty.kill()
+    a.pty?.kill()
   }
 
   async kill(id: string): Promise<void> {
@@ -128,12 +157,14 @@ export class TerminalService {
   }
 
   write(id: string, data: string): void {
-    this.attachments.get(id)?.pty.write(data)
+    this.attachments.get(id)?.pty?.write(data)
   }
 
   resize(id: string, size: TerminalSize): void {
     const a = this.attachments.get(id)
     if (!a) return
+    a.size = size
+    if (!a.pty) return
     const { cols, rows } = clampSize(size)
     try {
       a.pty.resize(cols, rows)
