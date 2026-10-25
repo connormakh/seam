@@ -11,6 +11,7 @@
     "dev": "pnpm --filter @seam/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "postinstall": "node scripts/fix-node-pty.mjs"
   }
 }

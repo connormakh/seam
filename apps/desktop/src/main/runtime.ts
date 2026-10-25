@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
+import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
 import { TerminalService } from './terminals/terminal-service'
 import { resolveTmuxBinary } from './tmux/binary'
 import { TMUX_CONFIG } from './tmux/config'
@@ -56,6 +57,13 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     await tmux.reloadConfig()
   } catch {
     return { tmux: null, tmuxVersion: null, terminals: null }
+  }
+
+  // Belt and braces for the postinstall fix; a no-op once it has run.
+  try {
+    ensureSpawnHelpersExecutable(dirname(require.resolve('node-pty/package.json')))
+  } catch {
+    // node-pty resolved from an unusual location; spawning will report it.
   }
 
   const terminals = new TerminalService({
