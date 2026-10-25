@@ -1,9 +1,11 @@
+import { writeFileSync } from 'node:fs'
 import { app, type BrowserWindow } from 'electron'
 
 /**
  * Headless smoke test hook. When SEAM_SMOKE_TEST is set, the app waits for
  * the renderer to settle, runs the given script in the page, prints the
- * result as one JSON line prefixed with SMOKE:, and quits.
+ * result as one JSON line prefixed with SMOKE:, and quits. With
+ * SEAM_SMOKE_SCREENSHOT set to a path, it also saves a PNG of the window.
  *
  * Used by scripts/smoke.sh under xvfb; never active in normal runs.
  */
@@ -12,17 +14,25 @@ export function attachSmokeTest(win: BrowserWindow): void {
   if (!script) return
 
   const delayMs = Number(process.env['SEAM_SMOKE_DELAY_MS'] ?? 1500)
+  const screenshotPath = process.env['SEAM_SMOKE_SCREENSHOT']
+
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => {
-      win.webContents
-        .executeJavaScript(script)
-        .then((result: unknown) => {
-          process.stdout.write(`SMOKE:${JSON.stringify({ ok: true, result })}\n`)
-        })
-        .catch((err: unknown) => {
-          process.stdout.write(`SMOKE:${JSON.stringify({ ok: false, error: String(err) })}\n`)
-        })
-        .finally(() => app.exit(0))
+      void (async () => {
+        let line: string
+        try {
+          const result: unknown = await win.webContents.executeJavaScript(script)
+          line = JSON.stringify({ ok: true, result })
+        } catch (err) {
+          line = JSON.stringify({ ok: false, error: String(err) })
+        }
+        if (screenshotPath) {
+          const image = await win.webContents.capturePage()
+          writeFileSync(screenshotPath, image.toPNG())
+        }
+        process.stdout.write(`SMOKE:${line}\n`)
+        app.exit(0)
+      })()
     }, delayMs)
   })
 }
