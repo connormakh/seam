@@ -25,12 +25,14 @@ Next: M1, the Claude Code session browser.
 | ⌘⇧W | End the terminal |
 | ⌘1 to ⌘9 | Switch tabs |
 
+Shortcuts are defined in the application menu, so they also appear under File and Window.
+
 ## Requirements
 
 - macOS (Apple Silicon), Node 22.12+, pnpm 10
 - tmux 3.3+ (`brew install tmux`). Seam will bundle its own in M5.
 
-`node-pty` ships an N-API prebuild for macOS, so nothing compiles on install and the same binary loads in Electron.
+`node-pty` ships an N-API prebuild for macOS, so nothing compiles on install and the same binary loads in Electron. A postinstall step marks its `spawn-helper` executable, which the prebuild omits.
 
 ## Develop
 
@@ -56,7 +58,11 @@ tmux -S ~/Library/Application\ Support/Seam/tmux/seam-dev.sock ls
 
 ### Building on Linux
 
-There is no Linux prebuild for `node-pty`, so it compiles from source. If `node-gyp` cannot download Node headers (offline or sandboxed), point it at a local Node install: `cd node_modules/node-pty && npx node-gyp rebuild --nodedir="$(dirname "$(dirname "$(which node)")")"`.
+There is no Linux prebuild for `node-pty`, so it compiles from source. If `node-gyp` cannot download Node headers (offline or sandboxed), point it at the local Node install:
+
+```bash
+npm_config_nodedir="$(dirname "$(dirname "$(which node)")")" pnpm install
+```
 
 ## Layout
 
