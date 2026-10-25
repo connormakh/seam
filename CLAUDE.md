@@ -89,4 +89,7 @@ Renderer: `tabs-model.ts` is a pure reducer of tabs, background units and focus.
 - Records rebuilt after a restart need shell-reported timestamps (`$EPOCHREALTIME`, either decimal separator), not arrival time. bash before 5.0 has none, so on the bash macOS ships those records fall back to arrival time and a rebuild cannot reproduce them. Tests ask `reportsTime` (`test/helpers.ts`) and assert timings only on a shell that has a clock.
 - `$TMPDIR` on macOS is reached through a symlink (`/var/folders` -> `/private/var/folders`), and tmux and the shells report resolved paths. Tests make temp dirs with `makeTempDir` (`test/helpers.ts`), which resolves them, or nothing compares equal.
 - BSD and GNU tools disagree on exit codes (`ls` on a missing path is 1 on macOS, 2 on GNU). Tests use commands that agree, like `cat`.
+- `pane_current_command` is the name of the pane's foreground process group leader, not of its deepest child. A shell that runs a program as a child, without job control or `exec`, stays the leader and is what tmux reports. `claudeCommand` sets `set -m` for this reason.
+- tmux hands a pane the server's PATH and ignores `new-session -e PATH=...`. To control it, put `env PATH=...` in the command itself.
+- Python's `tty.setraw` flushes unread input (TCSAFLUSH). A stand-in for Claude must say when it is ready, or a paste sent during its startup is silently dropped.
 - Electron's default macOS menu binds Cmd+W to close the window; Seam installs its own menu.
