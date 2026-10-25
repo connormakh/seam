@@ -1,8 +1,8 @@
-import { accessSync, constants, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { accessSync, constants, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { ensureSpawnHelpersExecutable } from '../src/main/terminals/spawn-helper'
+import { makeTempDir } from './helpers'
 
 const isExecutable = (f: string): boolean => {
   try {
@@ -14,7 +14,7 @@ const isExecutable = (f: string): boolean => {
 }
 
 describe('ensureSpawnHelpersExecutable', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'seam-pty-'))
+  const dir = makeTempDir('seam-pty-')
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
   it('sets the executable bit on prebuilt helpers that lack it', () => {
@@ -32,7 +32,7 @@ describe('ensureSpawnHelpersExecutable', () => {
   })
 
   it('ignores a node-pty install without helpers', () => {
-    const empty = mkdtempSync(join(tmpdir(), 'seam-pty-empty-'))
+    const empty = makeTempDir('seam-pty-empty-')
     expect(ensureSpawnHelpersExecutable(empty)).toEqual([])
     rmSync(empty, { recursive: true, force: true })
   })

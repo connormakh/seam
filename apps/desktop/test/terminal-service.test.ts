@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { spawn } from 'node-pty'
 import type { TerminalExitEvent } from '@shared/ipc'
 import { TerminalService } from '../src/main/terminals/terminal-service'
 import type { Tmux } from '../src/main/tmux/tmux'
-import { makeTestTmux, waitFor } from './helpers'
+import { makeTempDir, makeTestTmux, waitFor } from './helpers'
 
 describe('TerminalService (real tmux + node-pty)', () => {
   let tmux: Tmux
@@ -124,7 +123,7 @@ describe('TerminalService (real tmux + node-pty)', () => {
   })
 
   it('creates a linked Claude + shell pair in one folder', async () => {
-    const project = mkdtempSync(join(tmpdir(), 'seam-project-'))
+    const project = makeTempDir('seam-project-')
     const { claude, shell } = await service.createPair({ cwd: project })
 
     expect(claude).toMatchObject({ kind: 'claude', title: basename(project), pairId: shell.id, cwd: project })

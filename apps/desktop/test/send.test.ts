@@ -72,17 +72,18 @@ describe('ContextSender (real bash + a fake Claude in tmux)', () => {
   })
 
   it('pastes the last command and its output into Claude as one bracketed paste', async () => {
-    await runInShell('echo "TOKEN=supersecretvalue"; ls /definitely-missing', 1)
+    // `cat` on a missing file exits 1 on both BSD and GNU; `ls` differs (1 vs 2).
+    await runInShell('echo "TOKEN=supersecretvalue"; cat /definitely-missing', 1)
     const result = await sender.sendLast(shellId, claudeId)
     // Once in the command line, once in its output.
-    expect(result).toMatchObject({ exitCode: 2, truncated: false, masked: 2 })
+    expect(result).toMatchObject({ exitCode: 1, truncated: false, masked: 2 })
 
     const got = await waitFor(async () => {
       const t = existsSync(received) ? readFileSync(received, 'utf8') : ''
       return t.includes('\x1b[201~') ? t : null
     })
-    expect(got.startsWith('\x1b[200~<shell-context shell="shell" cwd="~" exit="2"')).toBe(true)
-    expect(got).toContain('$ echo "TOKEN=[masked]"; ls /definitely-missing')
+    expect(got.startsWith('\x1b[200~<shell-context shell="shell" cwd="~" exit="1"')).toBe(true)
+    expect(got).toContain('$ echo "TOKEN=[masked]"; cat /definitely-missing')
     expect(got).toContain('TOKEN=[masked]\r')
     expect(got).toContain('No such file or directory')
     expect(got).not.toContain('supersecretvalue')

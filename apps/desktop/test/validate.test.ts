@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { asCreateOptions, asId, asSize, cleanTitle } from '../src/main/validate'
+import { makeTempDir } from './helpers'
 
 describe('renderer input validation', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'seam-validate-'))
+  const dir = makeTempDir('seam-validate-')
   const file = join(dir, 'file.txt')
   writeFileSync(file, '')
   afterAll(() => rmSync(dir, { recursive: true, force: true }))

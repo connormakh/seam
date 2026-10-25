@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { claudeCommand } from '../src/main/terminals/claude-command'
+import { makeTempDir } from './helpers'
 
 /** Run the command once, swapping the final "exec login shell" for an exit so it returns. */
 function runOnce(argv: string[], env: Record<string, string>): string {
@@ -14,7 +14,7 @@ function runOnce(argv: string[], env: Record<string, string>): string {
 }
 
 describe('claudeCommand', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'seam-claude-'))
+  const dir = makeTempDir('seam-claude-')
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
   it('runs claude with its arguments when it is on PATH', () => {
