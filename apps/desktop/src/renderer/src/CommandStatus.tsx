@@ -25,6 +25,12 @@ export function CommandStatus({ latest, onSend }: Props): React.JSX.Element | nu
 
   return (
     <span className="command-status" data-state={state}>
+      {/* The shell is shared, so say whose command this was. */}
+      {latest.actor === 'claude' && (
+        <span className="command-actor" title="Claude ran this">
+          by Claude
+        </span>
+      )}
       <span className="command-mark" aria-hidden="true">
         {latest.running ? '●' : failed ? '✗' : '✓'}
       </span>

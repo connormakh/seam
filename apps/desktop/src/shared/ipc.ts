@@ -118,6 +118,8 @@ export interface CommandSummary {
   running: boolean
   /** Lines of output, once captured; null while running or if unreadable. */
   outputLines: number | null
+  /** Who typed it. The shell is shared, so this is how you tell them apart. */
+  actor: 'user' | 'claude'
 }
 
 export interface CreatePairOptions {

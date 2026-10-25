@@ -310,6 +310,16 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
     expect(entries.some((e) => e.outcome === 'approved')).toBe(true)
   })
 
+  it('marks the commands it ran, so a shared shell says who typed what', async () => {
+    answer = 'approve'
+    await client.callTool('run_in_shell', { shell: 'shell', command: 'echo who-ran-this' })
+    const records = await tracker.list(shellId)
+    const mine = records.find((r) => r.command === 'echo who-ran-this')
+    expect(mine?.actor).toBe('claude')
+    // The user's own commands are still theirs.
+    expect(records.find((r) => r.command.includes('TOKEN='))?.actor).toBe('user')
+  })
+
   it('answers an unknown shell and an unknown tool as errors Claude can read', async () => {
     const missing = await client.callTool('read_shell', { shell: 'nope' })
     expect(missing.isError).toBe(true)

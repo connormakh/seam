@@ -10,6 +10,7 @@ const record = (o: Partial<CommandRecord> = {}): CommandRecord => ({
   startedAt: 1_000,
   endedAt: 5_200,
   exitCode: 1,
+  actor: 'user',
   startLine: 10,
   endLine: 13,
   output: 'FAIL auth.spec.ts\n  expected 200, got 401\n1 failed',

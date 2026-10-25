@@ -1,13 +1,18 @@
 /**
  * What Claude is allowed to run in a shell, before anything is typed.
  *
- * Three things decide it, in this order, and the order is the whole point:
- * read-only refuses outright, the denylist always asks however the workspace
- * is configured, and only then can an allowlist or an earlier "approve
- * similar" let a command through without a card.
+ * The default is `allow`, because the shell is meant to be one terminal that
+ * both the user and Claude work in; a card in front of every command would
+ * make it Claude asking to borrow the user's terminal instead. What Claude
+ * ran is answered after the fact, by the audit log and the marks beside each
+ * command, rather than before it by a prompt.
+ *
+ * The denylist is the exception, and stays on under `allow`: a handful of
+ * commands whose cost cannot be undone, which a working session never hits.
+ * `ask` is there for anyone who wants the stricter thing back.
  */
 
-export type PolicyMode = 'ask' | 'allowlist' | 'readonly'
+export type PolicyMode = 'allow' | 'ask' | 'allowlist' | 'readonly'
 
 export interface PolicySettings {
   mode: PolicyMode
@@ -15,7 +20,7 @@ export interface PolicySettings {
   allowPrefixes: string[]
 }
 
-export const DEFAULT_POLICY: PolicySettings = { mode: 'ask', allowPrefixes: [] }
+export const DEFAULT_POLICY: PolicySettings = { mode: 'allow', allowPrefixes: [] }
 
 export type Decision =
   | { verdict: 'allow'; why: string }
@@ -23,9 +28,10 @@ export type Decision =
   | { verdict: 'deny'; why: string }
 
 /**
- * Always worth a human look, whatever the workspace policy says. These are
- * the cases where being wrong is unrecoverable, so a false ask costs a click
- * and a false allow costs the user something they cannot get back.
+ * Always worth a human look, whatever the policy says, including `allow`.
+ * These are the cases where being wrong is unrecoverable, so a false ask
+ * costs a click and a false allow costs something that cannot be got back.
+ * Nothing in ordinary work matches them, so they do not interrupt anyone.
  */
 const ALWAYS_ASK: { test: RegExp; why: string }[] = [
   // rm carrying both recursive and force, in either spelling or order.
@@ -99,6 +105,9 @@ export function decide(
 
   const dangerous = ALWAYS_ASK.find((rule) => rule.test.test(trimmed))
   if (dangerous) return { verdict: 'ask', why: `${dangerous.why}, which always needs a look` }
+
+  // The shared terminal: Claude types into it like the user does.
+  if (settings.mode === 'allow') return { verdict: 'allow', why: 'this shell is shared with Claude' }
 
   // Only a single simple command can be judged by its prefix.
   if (isSimpleCommand(trimmed)) {

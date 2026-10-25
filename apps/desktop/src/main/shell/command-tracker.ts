@@ -19,6 +19,8 @@ export interface CommandRecord {
   output: string | null
   /** Lines of output dropped from the front because the command printed more than we keep. */
   droppedLines: number
+  /** Who typed it: the user at the keyboard, or Claude through a tool. */
+  actor: 'user' | 'claude'
 }
 
 export interface CommandTrackerOptions {
@@ -55,7 +57,8 @@ export function summarize(r: CommandRecord): CommandSummary {
     endedAt: r.endedAt,
     exitCode: r.exitCode,
     running: r.endedAt === null,
-    outputLines: r.output === null ? null : (r.output ? r.output.split('\n').length : 0) + r.droppedLines
+    outputLines: r.output === null ? null : (r.output ? r.output.split('\n').length : 0) + r.droppedLines,
+    actor: r.actor
   }
 }
 
@@ -69,6 +72,8 @@ export class CommandTracker {
   private readonly offsets = new Map<string, number>()
   private readonly partial = new Map<string, string>()
   private readonly captures = new Map<string, Promise<void>>()
+  /** Commands Seam is about to type, per terminal, so the record knows who ran it. */
+  private readonly attributions = new Map<string, string[]>()
   private watcher: FSWatcher | null = null
   private nextId = 1
 
@@ -84,6 +89,17 @@ export class CommandTracker {
   stop(): void {
     this.watcher?.close()
     this.watcher = null
+  }
+
+  /**
+   * Say that Seam is about to type this command on Claude's behalf. The
+   * shell reports it like any other, so without this there is no way to tell
+   * it from one the user typed, and a shared terminal needs that told.
+   */
+  attribute(terminalId: string, command: string): void {
+    const queued = this.attributions.get(terminalId) ?? []
+    queued.push(command.trim())
+    this.attributions.set(terminalId, queued)
   }
 
   eventsFile(terminalId: string): string {
@@ -110,6 +126,7 @@ export class CommandTracker {
 
   /** Drop a terminal's records and its events file once it has ended. */
   forget(terminalId: string): void {
+    this.attributions.delete(terminalId)
     this.records.delete(terminalId)
     this.offsets.delete(terminalId)
     this.partial.delete(terminalId)
@@ -162,7 +179,17 @@ export class CommandTracker {
         startLine: at,
         endLine: null,
         output: null,
-        droppedLines: 0
+        droppedLines: 0,
+        actor: 'user'
+      }
+      // Claude's commands arrive from the shell exactly like the user's, so
+      // they are matched by text against what Seam said it was about to type.
+      const queued = this.attributions.get(terminalId)
+      const match = queued?.indexOf(record.command.trim()) ?? -1
+      if (queued && match !== -1) {
+        record.actor = 'claude'
+        queued.splice(match, 1)
+        if (queued.length === 0) this.attributions.delete(terminalId)
       }
       list.push(record)
       const keep = this.o.keep ?? 50

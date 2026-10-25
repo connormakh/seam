@@ -61,9 +61,10 @@ export interface RuntimeSettings {
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
-  // Off by default: with no allowlist UI yet, routing everything through the
-  // shell means a card per command.
-  const settings: RuntimeSettings = { shellOnly: process.env['SEAM_SHELL_ONLY'] === '1' }
+  // On by default: the shell is the one terminal both the user and Claude
+  // work in, so a command Claude runs belongs there and not in a hidden
+  // subprocess. SEAM_SHELL_ONLY=0 gives Claude its own Bash back.
+  const settings: RuntimeSettings = { shellOnly: process.env['SEAM_SHELL_ONLY'] !== '0' }
 
   const binary = resolveTmuxBinary({
     override: process.env['SEAM_TMUX'],

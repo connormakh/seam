@@ -585,3 +585,14 @@ code {
   border-color: var(--accent) !important;
   color: var(--accent);
 }
+
+/* Whose command this was, in a terminal both the user and Claude type into. */
+.command-actor {
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}

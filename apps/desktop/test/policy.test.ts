@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { decide, isSimpleCommand, similarPrefix, type PolicySettings } from '../src/main/mcp/policy'
+import { DEFAULT_POLICY, decide, isSimpleCommand, similarPrefix, type PolicySettings } from '../src/main/mcp/policy'
 
+const allow: PolicySettings = { mode: 'allow', allowPrefixes: [] }
 const ask: PolicySettings = { mode: 'ask', allowPrefixes: [] }
 const allowlist: PolicySettings = { mode: 'allowlist', allowPrefixes: ['git status', 'npm test', 'ls'] }
 const readonly: PolicySettings = { mode: 'readonly', allowPrefixes: ['git status'] }
 
 describe('run policy', () => {
-  it('asks before anything, by default', () => {
+  it('lets Claude type into the shared shell, which is the default', () => {
+    expect(DEFAULT_POLICY.mode).toBe('allow')
+    expect(decide('ls', allow).verdict).toBe('allow')
+    expect(decide('npm test', allow).verdict).toBe('allow')
+    // Even a compound command: the shell is shared, not sandboxed.
+    expect(decide('npm run build && npm test', allow).verdict).toBe('allow')
+  })
+
+  it('still asks for the handful that cannot be undone, even under allow', () => {
+    expect(decide('rm -rf ~/src', allow).verdict).toBe('ask')
+    expect(decide('git push --force', allow).verdict).toBe('ask')
+    expect(decide('sudo rm /etc/hosts', allow).verdict).toBe('ask')
+  })
+
+  it('asks before anything when a workspace opts into that', () => {
     expect(decide('ls', ask).verdict).toBe('ask')
     expect(decide('git status', ask).verdict).toBe('ask')
   })

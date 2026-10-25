@@ -93,7 +93,7 @@ export function installMenu(
           id: 'shell-only',
           // Claude Code takes the flag at launch, so this cannot change a
           // session already running. The label says so rather than looking broken.
-          label: 'Run Claude Commands Here (New Pairs)',
+          label: 'Run Claude Commands in This Shell (New Pairs)',
           type: 'checkbox',
           checked: opts.settings?.shellOnly() ?? false,
           enabled: Boolean(opts.settings),

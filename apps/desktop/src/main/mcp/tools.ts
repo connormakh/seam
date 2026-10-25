@@ -355,6 +355,9 @@ export class Tools {
     const before = await this.o.commands.list(shell.id)
     const lastId = before.at(-1)?.id ?? 0
     const timeoutMs = clamp(args['timeout_s'], 60, 600) * 1000
+    // Said before it is typed, because the shell reports the command the
+    // instant it starts: afterwards would be a race with its own record.
+    this.o.commands.attribute(shell.id, command)
     // -l so the command is typed exactly, then Enter, so it lands in the
     // user's own history looking like something they ran.
     await this.o.tmux.sendKeys(shell.id, command, { literal: true, enter: true })
