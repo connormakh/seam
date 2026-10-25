@@ -421,3 +421,80 @@ code {
   align-items: center;
   gap: 6px;
 }
+
+.command-status {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.command-mark {
+  flex: none;
+}
+
+.command-status[data-state='ok'] .command-mark {
+  color: #7fd18b;
+}
+
+.command-status[data-state='failed'] .command-mark,
+.command-status[data-state='failed'] .command-meta {
+  color: var(--danger);
+}
+
+.command-status[data-state='running'] .command-mark {
+  color: var(--accent);
+}
+
+.command-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+
+.command-meta {
+  flex: none;
+}
+
+.command-send {
+  flex: none;
+  align-self: center;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.command-send:hover {
+  border-color: var(--accent);
+}
+
+.command-send-failed {
+  border-color: rgb(239 107 115 / 0.6);
+  background: rgb(239 107 115 / 0.12);
+}
+
+.command-send kbd {
+  font-size: 10px;
+}
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  max-width: 460px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  font-size: 12px;
+  line-height: 1.4;
+}

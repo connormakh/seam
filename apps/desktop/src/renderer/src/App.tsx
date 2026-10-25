@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AppInfo } from '@shared/ipc'
+import type { AppInfo, CommandSummary } from '@shared/ipc'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
-import { initialTabs, isPair, nextShellTitle, tabsReducer } from './tabs-model'
+import { initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
 import { UnitView } from './UnitView'
 
 const api = (): typeof window.seam.terminals => window.seam.terminals
@@ -15,6 +15,8 @@ export function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [model, dispatch] = useReducer(tabsReducer, initialTabs)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [latest, setLatest] = useState<Record<string, CommandSummary>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
   const modelRef = useRef(model)
@@ -22,6 +24,47 @@ export function App(): React.JSX.Element {
   // Titles handed out but not yet in the model, so rapid new shells never repeat one.
   const reservedTitles = useRef(new Set<string>())
   const remounts = useRef(new Map<string, number[]>())
+
+  // Each shell's latest command, live.
+  useEffect(() => {
+    return window.seam.commands.onChanged(({ terminalId, latest: l }) =>
+      setLatest((prev) => (prev[terminalId]?.id === l.id && prev[terminalId]?.running === l.running && prev[terminalId]?.outputLines === l.outputLines ? prev : { ...prev, [terminalId]: l }))
+    )
+  }, [])
+
+  // Shells already running (restored, or reopened) report their last command once.
+  const shellIds = model.tabs.flatMap((u) => u.members.filter((m) => m.kind === 'shell').map((m) => m.id)).join(',')
+  useEffect(() => {
+    for (const id of shellIds ? shellIds.split(',') : []) {
+      if (latest[id]) continue
+      void window.seam.commands.latest(id).then((l) => l && setLatest((prev) => (prev[id] ? prev : { ...prev, [id]: l })))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shellIds])
+
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 6000)
+    return () => clearTimeout(t)
+  }, [notice])
+
+  /** Shell to Claude: paste the shell's last command into Claude's prompt, then hand Claude the keyboard. */
+  const sendLast = useCallback(async (unit: Unit) => {
+    const claude = unit.members.find((m) => m.kind === 'claude')
+    const shell = unit.members.find((m) => m.kind === 'shell')
+    if (!claude || !shell) return
+    try {
+      const r = await window.seam.commands.sendLastToClaude(shell.id, claude.id)
+      dispatch({ type: 'focus', id: claude.id })
+      const cmd = r.command.length > 40 ? `${r.command.slice(0, 39)}…` : r.command
+      const details = [`exit ${r.exitCode ?? '?'}`, `${r.lines} line${r.lines === 1 ? '' : 's'}${r.truncated ? ' (tail)' : ''}`]
+      if (r.masked) details.push(`${r.masked} secret${r.masked === 1 ? '' : 's'} masked`)
+      setNotice(`Pasted “${cmd}” (${details.join(', ')}) into Claude's prompt. Add a note and press Enter.`)
+      setError(null)
+    } catch (err) {
+      setError(remoteMessage(err))
+    }
+  }, [])
 
   const refreshBackground = useCallback(async () => {
     dispatch({ type: 'set-background', terminals: await api().list() })
@@ -140,9 +183,14 @@ export function App(): React.JSX.Element {
         case 'toggle-focus':
           dispatch({ type: 'toggle-focus' })
           break
+        case 'send-last': {
+          const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
+          if (unit && isPair(unit)) void sendLast(unit)
+          break
+        }
       }
     })
-  }, [closeTab, endUnit, newPair, newShell])
+  }, [closeTab, endUnit, newPair, newShell, sendLast])
 
   const onFocus = useCallback((id: string) => dispatch({ type: 'focus', id }), [])
 
@@ -174,9 +222,22 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
+      {notice && tabs.length > 0 && (
+        <div className="toast" role="status">
+          {notice}
+        </div>
+      )}
+
       <main className="workspace">
         {tabs.map((u) => (
-          <UnitView key={u.key} unit={u} visible={u.key === activeKey} onFocus={onFocus} />
+          <UnitView
+            key={u.key}
+            unit={u}
+            visible={u.key === activeKey}
+            latest={latest}
+            onFocus={onFocus}
+            onSend={(unit) => void sendLast(unit)}
+          />
         ))}
 
         {restored && tabs.length === 0 && (
@@ -218,4 +279,11 @@ export function App(): React.JSX.Element {
       </main>
     </div>
   )
+}
+
+/** Electron prefixes errors thrown in main; show only the message itself. */
+function remoteMessage(err: unknown): string {
+  return String(err instanceof Error ? err.message : err)
+    .replace(/^Error invoking remote method '[^']+': /, '')
+    .replace(/^\w*Error: /, '')
 }

@@ -101,7 +101,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmux,
     spawnPty: spawn,
     defaultCwd: o.homeDir,
-    claudeCommand: () => claudeCommand(shell),
+    claudeCommand: () => claudeOverride() ?? claudeCommand(shell),
     shellLaunch: (id) =>
       shellLaunch({
         shell,
@@ -121,4 +121,20 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   })
 
   return { tmux, eventsDir, commands, context, tmuxVersion, terminals }
+}
+
+/**
+ * Dev and demo hook: SEAM_CLAUDE_COMMAND='["python3", "scripts/fake-claude.py"]'
+ * runs a stand-in on the Claude side of new pairs instead of Claude Code.
+ */
+function claudeOverride(): string[] | null {
+  const raw = process.env['SEAM_CLAUDE_COMMAND']
+  if (!raw) return null
+  try {
+    const argv: unknown = JSON.parse(raw)
+    if (Array.isArray(argv) && argv.length > 0 && argv.every((a) => typeof a === 'string')) return argv as string[]
+  } catch {
+    // fall through
+  }
+  return null
 }

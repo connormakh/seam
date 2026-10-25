@@ -1,12 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
-import type { TerminalInfo } from '@shared/ipc'
+import type { CommandSummary, TerminalInfo } from '@shared/ipc'
+import { CommandStatus } from './CommandStatus'
 import { TerminalView } from './terminal/TerminalView'
 import { isPair, type Unit } from './tabs-model'
 
 interface Props {
   unit: Unit
   visible: boolean
+  /** Latest command per terminal id. */
+  latest: Record<string, CommandSummary>
   onFocus(id: string): void
+  onSend(unit: Unit): void
 }
 
 const MIN_RATIO = 0.2
@@ -32,7 +36,7 @@ function saveRatio(key: string, ratio: number): void {
 }
 
 /** A tab's content: one terminal, or Claude and its shell side by side. */
-export function UnitView({ unit, visible, onFocus }: Props): React.JSX.Element {
+export function UnitView({ unit, visible, latest, onFocus, onSend }: Props): React.JSX.Element {
   const [ratio, setRatio] = useState(() => readRatio(unit.key))
   const [dragging, setDragging] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -66,7 +70,11 @@ export function UnitView({ unit, visible, onFocus }: Props): React.JSX.Element {
     <section key={m.id} className={`pane${unit.focusId === m.id && isPair(unit) ? ' pane-focused' : ''}`} style={style}>
       <header className="pane-header">
         <span className="pane-label">{m.kind === 'claude' ? 'Claude Code' : m.title === 'shell' && isPair(unit) ? 'Shell' : m.title}</span>
-        <span className="pane-path">{shortPath(m.cwd)}</span>
+        {/* A shell's last command knows where it ran; that beats where the shell started. */}
+        <span className="pane-path">{shortPath(latest[m.id]?.cwd ?? m.cwd)}</span>
+        {m.kind === 'shell' && (
+          <CommandStatus latest={latest[m.id]} {...(isPair(unit) ? { onSend: () => onSend(unit) } : {})} />
+        )}
       </header>
       <div className="pane-body">
         <TerminalView

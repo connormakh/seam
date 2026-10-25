@@ -70,6 +70,17 @@ export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev
       ]
     },
     {
+      label: 'Shell',
+      submenu: [
+        {
+          id: 'send-last',
+          label: 'Send Last Command to Claude',
+          accelerator: mac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
+          click: () => send({ type: 'send-last' })
+        }
+      ]
+    },
+    {
       label: 'Edit',
       // Roles give the xterm.js textarea native copy, paste and select all.
       submenu: [

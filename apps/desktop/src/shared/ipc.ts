@@ -34,6 +34,7 @@ export type MenuCommand =
   | { type: 'new-pair' }
   | { type: 'new-shell' }
   | { type: 'toggle-focus' }
+  | { type: 'send-last' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
