@@ -26,7 +26,11 @@ export interface TerminalServiceOptions {
   events: TerminalEvents
   defaultCwd: string
   /** argv that starts Claude Code for the Claude side of a pair. */
-  claudeCommand: () => string[]
+  /**
+   * How to start the Claude side of a pair. Takes the terminal's id because
+   * each session gets its own MCP config and its own control-socket token.
+   */
+  claudeLaunch: (sessionId: string, root: string) => { command: string[]; env?: Record<string, string> }
   /** How to start an integrated shell for a terminal; tmux's default shell when absent. */
   shellLaunch?: (terminalId: string) => ShellLaunch
 }
@@ -95,13 +99,16 @@ export class TerminalService {
     const title = opts.title ?? (basename(opts.cwd) || opts.cwd)
     const env = (self: string, other: string) => ({ SEAM_TERMINAL_ID: self, SEAM_PAIR_ID: other })
 
+    // The folder decides which shells this session may reach, so it is what
+    // the control-socket token is bound to.
+    const claudeLaunch = this.o.claudeLaunch(claudeId, opts.cwd)
     await this.o.tmux.newSession({
       id: claudeId,
       kind: 'claude',
       cwd: opts.cwd,
       title,
-      command: this.o.claudeCommand(),
-      env: env(claudeId, shellId),
+      command: claudeLaunch.command,
+      env: { ...claudeLaunch.env, ...env(claudeId, shellId) },
       pairId: shellId
     })
     try {

@@ -43,6 +43,8 @@ export interface NewSessionOptions {
   open?: boolean
   /** The other half of a Claude + shell pair, if this terminal belongs to one. */
   pairId?: string
+  /** The folder this terminal's pair was opened on; scopes what Claude can reach. */
+  root?: string
 }
 
 export interface TmuxSession {
@@ -63,6 +65,14 @@ export interface TmuxSession {
   serial: number
   /** The other half of a Claude + shell pair, or null. */
   pairId: string | null
+  /**
+   * The folder the pair was opened on. Seam has no workspace table yet, so
+   * this is what says which terminals belong together: a Claude session can
+   * only reach shells that share its root.
+   */
+  root: string
+  /** Hidden from Claude entirely, for shells holding credentials. */
+  private: boolean
 }
 
 export class TmuxError extends Error {
@@ -214,7 +224,10 @@ export class Tmux {
       ...['set-option', '-t', target, '@seam-kind', o.kind, ';'],
       ...['set-option', '-t', target, '@seam-title', oneLine(o.title ?? ''), ';'],
       ...['set-option', '-t', target, '@seam-open', o.open === false ? '0' : '1', ';'],
-      ...['set-option', '-t', target, '@seam-pair', o.pairId ?? '']
+      ...['set-option', '-t', target, '@seam-pair', o.pairId ?? '', ';'],
+      // escapeFormat because a path may contain '#', which tmux would expand.
+      ...['set-option', '-t', target, '@seam-root', escapeFormat(o.root ?? o.cwd), ';'],
+      ...['set-option', '-t', target, '@seam-private', '0']
     ])
   }
 
@@ -226,6 +239,12 @@ export class Tmux {
     } catch {
       return false
     }
+  }
+
+  /** Hide a shell from Claude, or show it again. */
+  async setPrivate(id: string, isPrivate: boolean): Promise<void> {
+    assertId(id)
+    await this.run(['set-option', '-t', `=${id}:`, '@seam-private', isPrivate ? '1' : '0'])
   }
 
   /** Sessions created by Seam on this server. Empty if the server is not running. */
@@ -242,7 +261,9 @@ export class Tmux {
       '#{pane_dead}',
       '#{@seam-open}',
       '#{session_id}',
-      '#{@seam-pair}'
+      '#{@seam-pair}',
+      '#{@seam-root}',
+      '#{@seam-private}'
     ]
     let out: string
     try {
@@ -256,7 +277,8 @@ export class Tmux {
     const sessions: TmuxSession[] = []
     for (const line of out.split('\n')) {
       if (!line) continue
-      const [id, kind, title, cwd, cmd, pid, created, attached, dead, open, sessionId, pair] = line.split(SEP)
+      const [id, kind, title, cwd, cmd, pid, created, attached, dead, open, sessionId, pair, root, isPrivate] =
+        line.split(SEP)
       if (!id || seen.has(id)) continue // one entry per session (first pane)
       if (kind !== 'shell' && kind !== 'claude') continue // not ours
       seen.add(id)
@@ -273,7 +295,11 @@ export class Tmux {
         open: open !== '0',
         // "$12" -> 12; tmux hands these out in creation order.
         serial: Number((sessionId ?? '').replace('$', '')) || 0,
-        pairId: pair && ID_PATTERN.test(pair) ? pair : null
+        pairId: pair && ID_PATTERN.test(pair) ? pair : null,
+        root: root ?? '',
+        // Anything but a plain "0" counts as private: an option Seam cannot
+        // read should hide a shell, never expose one.
+        private: (isPrivate ?? '') !== '' && isPrivate !== '0'
       })
     }
     // session_created has 1 s resolution; the serial breaks ties.

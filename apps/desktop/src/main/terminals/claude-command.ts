@@ -32,10 +32,13 @@ export function userShell(): string {
  */
 export function claudeCommand(shell: string = userShell(), claudeArgs: string[] = []): string[] {
   if (!/^\/[\w./+-]+$/.test(shell)) throw new Error(`unexpected shell path: ${shell}`)
+  // Arguments carry paths now (--mcp-config), and on macOS those contain
+  // spaces: "Application Support". So they are double-quoted below, and what
+  // is rejected is whatever would end the quoting or run something inside it.
   for (const a of claudeArgs) {
-    if (!/^[\w./:=@+-]+$/.test(a)) throw new Error(`unsafe claude argument: ${a}`)
+    if (!a || /["'`$\\\n\r]/.test(a)) throw new Error(`unsafe claude argument: ${a}`)
   }
-  const args = claudeArgs.length ? ` ${claudeArgs.join(' ')}` : ''
+  const args = claudeArgs.length ? ` ${claudeArgs.map((a) => `"${a}"`).join(' ')}` : ''
   // Inside single quotes for the login shell, so only double quotes here.
   const script = [
     'set -m;',

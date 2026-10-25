@@ -4,6 +4,9 @@ import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
 import { tmpdir } from 'node:os'
 import { ContextSender } from './context/send'
+import { ControlServer } from './control/server'
+import { installMcpServer, writeMcpConfig } from './mcp/install'
+import { Tools } from './mcp/tools'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
 import { claudeCommand, userShell } from './terminals/claude-command'
@@ -31,6 +34,8 @@ export interface Runtime {
   commands: CommandTracker | null
   /** Shell to Claude; null without tmux. */
   context: ContextSender | null
+  /** Claude to shell: the socket its MCP server calls in on; null without tmux. */
+  control: ControlServer | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -42,7 +47,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     bundledDir: o.isPackaged ? join(o.resourcesDir, 'bin') : undefined,
     path: process.env['PATH']
   })
-  if (!binary) return { tmux: null, eventsDir: null, commands: null, context: null, tmuxVersion: null, terminals: null }
+  if (!binary)
+    return { tmux: null, eventsDir: null, commands: null, context: null, control: null, tmuxVersion: null, terminals: null }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
   mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
@@ -67,7 +73,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmuxVersion = await tmux.version()
     await tmux.reloadConfig()
   } catch {
-    return { tmux: null, eventsDir: null, commands: null, context: null, tmuxVersion: null, terminals: null }
+    return { tmux: null, eventsDir: null, commands: null, context: null, control: null, tmuxVersion: null, terminals: null }
   }
 
   // Belt and braces for the postinstall fix; a no-op once it has run.
@@ -97,11 +103,49 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     contextDir: join(tmpdir(), 'seam-context')
   })
 
+  // Claude to shell. The tools read tmux and the command records; the control
+  // server is the only way in, and a token is the only way to be heard.
+  const tools = new Tools({ tmux, commands, homeDir: o.homeDir })
+  const control = new ControlServer({
+    socketPath: join(o.userDataDir, 'control.sock'),
+    methods: {
+      'tools/list': async () => tools.list(),
+      'tools/call': async (caller, params) =>
+        tools.call(caller, String(params['name'] ?? ''), (params['arguments'] as Record<string, unknown>) ?? {})
+    }
+  })
+  try {
+    await control.start()
+  } catch (err) {
+    // Claude simply has no shell tools then, and everything else still works,
+    // but say so: a silent failure here looks like the tools never existed.
+    console.error('[seam] control socket unavailable, Claude gets no shell tools:', err)
+  }
+
+  const claudeDir = join(o.userDataDir, 'claude')
+  const mcpServerPath = installMcpServer(claudeDir)
+
   const terminals = new TerminalService({
     tmux,
     spawnPty: spawn,
     defaultCwd: o.homeDir,
-    claudeCommand: () => claudeOverride() ?? claudeCommand(shell),
+    claudeLaunch: (sessionId, root) => {
+      const override = claudeOverride()
+      if (override) return { command: override }
+      // The token is this session's alone and dies with it, so a transcript
+      // that leaks one cannot be replayed into a session still running.
+      const token = control.issueToken({ sessionId, root })
+      const configPath = writeMcpConfig({
+        dir: claudeDir,
+        sessionId,
+        serverPath: mcpServerPath,
+        nodePath: process.execPath
+      })
+      return {
+        command: claudeCommand(shell, ['--mcp-config', configPath]),
+        env: { SEAM_SOCKET: control.socketPath, SEAM_SESSION_TOKEN: token }
+      }
+    },
     shellLaunch: (id) =>
       shellLaunch({
         shell,
@@ -114,13 +158,17 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     events: {
       data: (id, data) => o.send(IPC.terminalData, { id, data }),
       exit: (event) => {
-        if (event.ended) commands.forget(event.id)
+        if (event.ended) {
+          commands.forget(event.id)
+          // Whatever still holds this session's token stops being anyone.
+          control.revokeSession(event.id)
+        }
         o.send(IPC.terminalExit, event)
       }
     }
   })
 
-  return { tmux, eventsDir, commands, context, tmuxVersion, terminals }
+  return { tmux, eventsDir, commands, context, control, tmuxVersion, terminals }
 }
 
 /**

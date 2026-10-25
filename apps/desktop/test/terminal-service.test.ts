@@ -20,7 +20,7 @@ describe('TerminalService (real tmux + node-pty)', () => {
       tmux,
       spawnPty: spawn,
       defaultCwd: dir,
-      claudeCommand: () => ['sh', '-c', 'echo "fake-claude-ready in $(pwd)"; exec sh'],
+      claudeLaunch: () => ({ command: ['sh', '-c', 'echo "fake-claude-ready in $(pwd)"; exec sh'] }),
       events: {
         data: (id, data) => output.set(id, (output.get(id) ?? '') + data),
         exit: (e) => exits.push(e)
@@ -153,7 +153,7 @@ describe('TerminalService open state', () => {
 
   beforeAll(() => {
     ;({ tmux, dir } = makeTestTmux())
-    service = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeCommand: () => ['sh'], events: { data: () => {}, exit: () => {} } })
+    service = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeLaunch: () => ({ command: ['sh'] }), events: { data: () => {}, exit: () => {} } })
   })
 
   afterAll(async () => {
@@ -169,7 +169,7 @@ describe('TerminalService open state', () => {
     await service.setOpen(b.id, false)
 
     // A new service over the same server is what a relaunch looks like.
-    const relaunched = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeCommand: () => ['sh'], events: { data: () => {}, exit: () => {} } })
+    const relaunched = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, claudeLaunch: () => ({ command: ['sh'] }), events: { data: () => {}, exit: () => {} } })
     const byId = new Map((await relaunched.list()).map((t) => [t.id, t]))
     expect(byId.get(a.id)?.open).toBe(true)
     expect(byId.get(b.id)?.open).toBe(false)
