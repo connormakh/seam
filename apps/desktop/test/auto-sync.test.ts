@@ -212,6 +212,29 @@ describe('auto sync (real hook, real socket, real bash)', () => {
     expect(out.trim()).toBe('')
   })
 
+  it('remembers which sessions were silenced, for the next launch', async () => {
+    const saved: string[][] = []
+    const fresh = new AutoSync({
+      tmux,
+      commands: tracker,
+      homeDir: dir,
+      contextDir: join(dir, 'ctx'),
+      disabled: ['from-last-time'],
+      onDisabledChanged: (ids) => saved.push(ids)
+    })
+    // What was written down last time is still off.
+    expect(fresh.enabled('from-last-time')).toBe(false)
+    expect(fresh.enabled('someone-else')).toBe(true)
+
+    fresh.setEnabled('someone-else', false)
+    expect(saved.at(-1)).toEqual(['from-last-time', 'someone-else'])
+    fresh.setEnabled('from-last-time', true)
+    expect(saved.at(-1)).toEqual(['someone-else'])
+    // A session that ended is not coming back, so its entry goes too.
+    fresh.forget('someone-else')
+    expect(saved.at(-1)).toEqual([])
+  })
+
   it('can be turned off for a session', async () => {
     autoSync.setEnabled('claude-1', false)
     await run('echo not-wanted')

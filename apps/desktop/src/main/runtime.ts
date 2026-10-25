@@ -12,8 +12,9 @@ import { HookRouter } from './hooks/router'
 import { Approvals } from './mcp/approvals'
 import { AuditLog } from './mcp/audit'
 import { installMcpServer, writeMcpConfig } from './mcp/install'
-import { DEFAULT_POLICY } from './mcp/policy'
+import type { PolicySettings } from './mcp/policy'
 import { Tools } from './mcp/tools'
+import { SettingsStore } from './settings'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
 import { claudeCommand, shellOnlyArgs, userShell } from './terminals/claude-command'
@@ -59,19 +60,29 @@ export interface Runtime {
 }
 
 /**
- * Things that are decided when Claude is launched, so changing one affects
- * the next pair rather than the ones already running.
+ * Settings, read through so a change is written to disk as it is made rather
+ * than at some later moment that might never come.
  */
 export interface RuntimeSettings {
   /** Take Bash away, so every command Claude runs goes through the shell. */
-  shellOnly: boolean
+  shellOnly: () => boolean
+  /** Takes effect for the next pair: Claude Code reads the flag at launch. */
+  setShellOnly: (value: boolean) => void
+  policy: () => PolicySettings
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
-  // On by default: the shell is the one terminal both the user and Claude
-  // work in, so a command Claude runs belongs there and not in a hidden
-  // subprocess. SEAM_SHELL_ONLY=0 gives Claude its own Bash back.
-  const settings: RuntimeSettings = { shellOnly: process.env['SEAM_SHELL_ONLY'] !== '0' }
+  const store = new SettingsStore(join(o.userDataDir, 'settings.json'))
+  // The shell is the one terminal both the user and Claude work in, so a
+  // command Claude runs belongs there and not in a hidden subprocess, which
+  // is why it defaults on. SEAM_SHELL_ONLY overrides the saved value for one
+  // run without writing it back.
+  const override = process.env['SEAM_SHELL_ONLY']
+  const settings: RuntimeSettings = {
+    shellOnly: () => (override === undefined ? store.get().shellOnly : override !== '0'),
+    setShellOnly: (value) => void store.update({ shellOnly: value }),
+    policy: () => store.get().policy
+  }
 
   const binary = resolveTmuxBinary({
     override: process.env['SEAM_TMUX'],
@@ -174,13 +185,16 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     approvals,
     audit,
     // One setting until workspaces exist; the design doc puts it per workspace.
-    policy: () => DEFAULT_POLICY
+    policy: settings.policy
   })
   const autoSync = new AutoSync({
     tmux,
     commands,
     homeDir: o.homeDir,
-    contextDir: join(tmpdir(), 'seam-context')
+    contextDir: join(tmpdir(), 'seam-context'),
+    // A session outlives the app, so which ones the user silenced has to as well.
+    disabled: store.get().autoSyncOff,
+    onDisabledChanged: (ids) => void store.update({ autoSyncOff: ids })
   })
   const hooks = new HookRouter({
     autoSync,
@@ -245,7 +259,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
         configPath,
         '--settings',
         hooksPath,
-        ...(settings.shellOnly ? shellOnlyArgs('shell') : [])
+        ...(settings.shellOnly() ? shellOnlyArgs('shell') : [])
       ]
       return { command: claudeCommand(shell, args), env }
     },

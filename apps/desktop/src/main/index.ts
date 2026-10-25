@@ -65,10 +65,8 @@ void app.whenReady().then(async () => {
   installMenu(() => mainWindow, {
     isDev: !app.isPackaged,
     settings: {
-      shellOnly: () => runtime?.settings.shellOnly ?? false,
-      setShellOnly: (value) => {
-        if (runtime) runtime.settings.shellOnly = value
-      }
+      shellOnly: () => runtime?.settings.shellOnly() ?? false,
+      setShellOnly: (value) => runtime?.settings.setShellOnly(value)
     }
   })
   mainWindow = createWindow()

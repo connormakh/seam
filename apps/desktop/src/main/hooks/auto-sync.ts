@@ -27,6 +27,10 @@ export interface AutoSyncOptions {
   contextDir: string
   /** Bytes per delivery. */
   cap?: number
+  /** Sessions auto sync was turned off for, from the last run. */
+  disabled?: readonly string[]
+  /** Called whenever that set changes, so it can be written down. */
+  onDisabledChanged?: (ids: string[]) => void
 }
 
 const CAP = 2048
@@ -35,9 +39,11 @@ const FAILURE_LINES = 40
 export class AutoSync {
   /** The last command id already told to a session, per shell. */
   private readonly delivered = new Map<string, Map<string, number>>()
-  private readonly off = new Set<string>()
+  private readonly off: Set<string>
 
-  constructor(private readonly o: AutoSyncOptions) {}
+  constructor(private readonly o: AutoSyncOptions) {
+    this.off = new Set(o.disabled ?? [])
+  }
 
   enabled(sessionId: string): boolean {
     return !this.off.has(sessionId)
@@ -46,11 +52,14 @@ export class AutoSync {
   setEnabled(sessionId: string, on: boolean): void {
     if (on) this.off.delete(sessionId)
     else this.off.add(sessionId)
+    this.o.onDisabledChanged?.([...this.off])
   }
 
   forget(sessionId: string): void {
     this.delivered.delete(sessionId)
-    this.off.delete(sessionId)
+    // Only what it was told to say about is remembered; a session that ended
+    // is not coming back, so its entry would just accumulate.
+    if (this.off.delete(sessionId)) this.o.onDisabledChanged?.([...this.off])
   }
 
   /**

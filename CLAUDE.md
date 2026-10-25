@@ -14,7 +14,7 @@ Done:
 - **Attach mode:** Cmd+Opt+Enter queues the shell's last command for Claude's next prompt instead of pasting it, so it works mid-turn and does not depend on the input box taking a paste. The chip on the Claude pane drops it.
 - **Activity panel:** Shell menu > Activity (Cmd+Shift+A). Every tool call Claude makes, reading included, with its time and what the policy decided. With nothing standing between Claude and the shell, this is where "what has it been doing in there" is answered.
 - **Auto sync:** a `seam-hook` on `UserPromptSubmit` and `PostToolUse` tells Claude what the user ran in the shell, without anyone asking. Successful commands collapse to one line, failures carry their last 40 lines and a path to the rest, only what is new since the last delivery goes, capped at 2 KB. Claude's own commands are left out, and a quiet shell costs nothing.
-- **One shared terminal:** by default a pair starts Claude with `--disallowedTools Bash`, so every command it runs goes through `run_in_shell` into the companion terminal, and the policy is `allow`, so it just runs. Commands Seam typed are marked "by Claude" in the shell's header. `SEAM_SHELL_ONLY=0`, or the Shell menu, gives Claude its own Bash back for new pairs.
+- **One shared terminal:** by default a pair starts Claude with `--disallowedTools Bash`, so every command it runs goes through `run_in_shell` into the companion terminal, and the policy is `allow`, so it just runs. Commands Seam typed are marked "by Claude" in the shell's header. `SEAM_SHELL_ONLY=0`, or the Shell menu, gives Claude its own Bash back for new pairs; the menu remembers, the env var is for one run.
 - **Hooks:
 - `hooks/install.ts` writes `seam-hook` and a per-session `--settings` file. The hook forwards its stdin event to the control socket and prints what comes back; no socket, no answer or a bad one all mean print nothing and exit 0, because a hook that fails loudly stalls the user's turn.
 - `hooks/auto-sync.ts` builds the digest and remembers what each session has already been told.
@@ -53,6 +53,8 @@ SEAM_SMOKE_SCREENSHOT=/tmp/seam.png scripts/smoke.sh '(async () => document.body
 ```
 
 Useful env vars: `SEAM_TMUX_SOCKET` (socket name; dev default `seam-dev`, packaged `seam`), `SEAM_TMUX` (tmux binary), `SEAM_CLAUDE_COMMAND` (JSON argv for the Claude side, e.g. `'["python3","scripts/fake-claude.py"]'` for a stand-in), and for smoke tests `SEAM_SMOKE_MENU` (menu item ids to click) and `SEAM_SMOKE_PICK_FOLDER` (answer for the folder picker).
+
+Settings live in `<userData>/settings.json` (`src/main/settings.ts`): `shellOnly`, the run `policy`, and which sessions have auto sync off. A JSON file rather than the design doc's SQLite, because these are a handful of fields and a native module rebuilt per Electron version is not worth carrying for them; the database arrives with the session browser, which needs one for search. It is also the only way to reach a setting with no UI yet, so it is meant to be hand-edited: every field is validated separately and anything unreadable falls back to its default rather than stopping the app.
 
 ## Architecture
 
