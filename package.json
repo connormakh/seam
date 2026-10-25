@@ -1,0 +1,16 @@
+{
+  "name": "seam",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A macOS workspace where Claude Code sessions and your shells share context.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @seam/desktop dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10 blocks dependency install scripts unless listed here.
+# electron downloads its binary; node-pty compiles a native addon.
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - node-pty
