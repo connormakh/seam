@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  type MenuCommand,
   type SeamApi,
   type TerminalDataEvent,
   type TerminalExitEvent
@@ -18,8 +19,17 @@ ipcRenderer.on(IPC.terminalExit, (_e, event: TerminalExitEvent) => {
   for (const fn of exitListeners) fn(event)
 })
 
+const menuListeners = new Set<(command: MenuCommand) => void>()
+ipcRenderer.on(IPC.menuCommand, (_e, command: MenuCommand) => {
+  for (const fn of menuListeners) fn(command)
+})
+
 const api: SeamApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
+  onMenuCommand: (listener) => {
+    menuListeners.add(listener)
+    return () => menuListeners.delete(listener)
+  },
   terminals: {
     list: () => ipcRenderer.invoke(IPC.terminalList),
     create: (opts) => ipcRenderer.invoke(IPC.terminalCreate, opts ?? {}),

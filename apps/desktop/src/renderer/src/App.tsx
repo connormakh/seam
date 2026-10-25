@@ -121,27 +121,26 @@ export function App(): React.JSX.Element {
     })
   }, [removeTab])
 
+  // Shortcuts live in the application menu (main), which sends commands here.
   useEffect(() => {
-    function onKey(e: KeyboardEvent): void {
-      if (!e.metaKey || e.altKey || e.ctrlKey) return
-      const key = e.key.toLowerCase()
-      if (key === 't' && !e.shiftKey) {
-        e.preventDefault()
-        void newShell()
-      } else if (key === 'w' && activeId) {
-        e.preventDefault()
-        if (e.shiftKey) endTerminal(activeId)
-        else closeTab(activeId)
-      } else if (/^[1-9]$/.test(e.key)) {
-        const tab = tabs[Number(e.key) - 1]
-        if (tab) {
-          e.preventDefault()
-          setActiveId(tab.info.id)
+    return window.seam.onMenuCommand((command) => {
+      switch (command.type) {
+        case 'new-shell':
+          void newShell()
+          break
+        case 'close-tab':
+          if (activeId) closeTab(activeId)
+          break
+        case 'end-terminal':
+          if (activeId) endTerminal(activeId)
+          break
+        case 'select-tab': {
+          const tab = tabs[command.index]
+          if (tab) setActiveId(tab.info.id)
+          break
         }
       }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    })
   }, [activeId, closeTab, endTerminal, newShell, tabs])
 
   const tmuxMissing = info !== null && info.tmux === null

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, shell } from 'electron'
 import { registerIpc } from './ipc'
+import { installMenu } from './menu'
 import { attachSmokeTest } from './smoke'
 import { createRuntime, type Runtime } from './runtime'
 
@@ -61,6 +62,7 @@ void app.whenReady().then(async () => {
     send: (channel, payload) => mainWindow?.webContents.send(channel, payload)
   })
   registerIpc(runtime)
+  installMenu(() => mainWindow, { isDev: !app.isPackaged })
   mainWindow = createWindow()
 
   app.on('activate', () => {

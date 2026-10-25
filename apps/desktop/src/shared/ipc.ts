@@ -19,8 +19,16 @@ export const IPC = {
   terminalResize: 'terminal:resize',
   /** main -> renderer events */
   terminalData: 'terminal:data',
-  terminalExit: 'terminal:exit'
+  terminalExit: 'terminal:exit',
+  menuCommand: 'menu:command'
 } as const
+
+/** Commands the application menu (and its shortcuts) sends to the window. */
+export type MenuCommand =
+  | { type: 'new-shell' }
+  | { type: 'close-tab' }
+  | { type: 'end-terminal' }
+  | { type: 'select-tab'; index: number }
 
 export interface AppInfo {
   name: string
@@ -89,4 +97,5 @@ export interface TerminalApi {
 export interface SeamApi {
   appInfo(): Promise<AppInfo>
   terminals: TerminalApi
+  onMenuCommand(listener: (command: MenuCommand) => void): () => void
 }
