@@ -97,7 +97,7 @@ describe('Tmux (real server)', () => {
 
   it('builds an attach command on the private socket', () => {
     const { args } = tmux.attachCommand('abc')
-    expect(args).toEqual(['-u', '-L', tmux.opts.socketName, '-f', tmux.opts.configPath, 'attach-session', '-t', '=abc'])
+    expect(args).toEqual(['-u', '-S', tmux.opts.socketPath, '-f', tmux.opts.configPath, 'attach-session', '-t', '=abc'])
   })
 })
 
@@ -110,6 +110,50 @@ describe('Tmux ordering', () => {
       expect((await tmux.listSessions()).map((s) => s.id)).toEqual(ids)
     } finally {
       await tmux.killServer()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('Tmux server lifecycle', () => {
+  it('can end the last session and start a new one immediately, repeatedly', async () => {
+    const { tmux, dir } = makeTestTmux()
+    try {
+      for (let i = 0; i < 25; i++) {
+        await tmux.newSession({ id: `cycle-${i}`, kind: 'shell', cwd: dir, command: ['sh'] })
+        await tmux.killSession(`cycle-${i}`)
+      }
+      await tmux.newSession({ id: 'after', kind: 'shell', cwd: dir, command: ['sh'] })
+      expect(await tmux.hasSession('after')).toBe(true)
+    } finally {
+      await tmux.killServer()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reloads config into a running server, and is a no-op with none running', async () => {
+    const { tmux, dir } = makeTestTmux()
+    try {
+      await tmux.reloadConfig()
+      await tmux.newSession({ id: 'cfg', kind: 'shell', cwd: dir, command: ['sh'] })
+      await tmux.run(['set-option', '-g', 'history-limit', '10'])
+      await tmux.reloadConfig()
+      expect((await tmux.run(['show-options', '-gv', 'history-limit'])).trim()).toBe('50000')
+    } finally {
+      await tmux.killServer()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps app-only variables out of the environment it hands to tmux', () => {
+    const { tmux, dir } = makeTestTmux()
+    process.env['ELECTRON_RENDERER_URL'] = 'http://localhost:5173'
+    try {
+      const env = tmux.processEnv()
+      expect(env['ELECTRON_RENDERER_URL']).toBeUndefined()
+      expect(env['PATH']).toBe(process.env['PATH'])
+    } finally {
+      delete process.env['ELECTRON_RENDERER_URL']
       rmSync(dir, { recursive: true, force: true })
     }
   })

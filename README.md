@@ -42,9 +42,13 @@ pnpm typecheck
 pnpm build
 ```
 
-Dev builds use the tmux socket `seam-dev`; packaged builds use `seam`. Set `SEAM_TMUX_SOCKET` to use another, and `SEAM_TMUX` to point at a specific tmux binary.
+Seam's tmux server lives at `~/Library/Application Support/Seam/tmux/<name>.sock`, outside `/tmp` (which macOS cleans periodically). Dev builds use the name `seam-dev`; packaged builds use `seam`. Set `SEAM_TMUX_SOCKET` to use another name, and `SEAM_TMUX` to point at a specific tmux binary.
 
-To inspect the private server directly: `tmux -L seam-dev ls`.
+To inspect the private server directly:
+
+```bash
+tmux -S ~/Library/Application\ Support/Seam/tmux/seam-dev.sock ls
+```
 
 ### Headless smoke test
 

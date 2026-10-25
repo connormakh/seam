@@ -31,4 +31,8 @@ set -g window-size latest
 
 # Keep sessions running with no client attached; that is the point.
 set -g destroy-unattached off
+
+# Keep the server up with zero sessions. Otherwise ending the last terminal
+# and opening a new one straight away can race the server shutting down.
+set -s exit-empty off
 `

@@ -15,8 +15,11 @@ export type TerminalKind = 'shell' | 'claude'
 
 export interface TmuxOptions {
   binary: string
-  /** Name for `tmux -L`; keeps Seam's server apart from the user's tmux. */
-  socketName: string
+  /**
+   * Socket path for `tmux -S`. Keeps Seam's server apart from the user's
+   * tmux, and out of /tmp, where macOS periodically deletes old files.
+   */
+  socketPath: string
   configPath: string
   /**
    * Extra environment for every tmux process. The first call starts the
@@ -71,6 +74,9 @@ export class TmuxError extends Error {
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
+/** Variables that belong to the app process, not to a user's shell. */
+const APP_ONLY_ENV = /^(ELECTRON_|VITE_|CHROME_|NODE_OPTIONS$|NODE_ENV$|TMUX$|TMUX_PANE$)/
+
 /**
  * tmux expands formats in `-c` start directories: "#(cmd)" runs a command
  * and "#S" becomes the session name. Doubling '#' makes the path literal.
@@ -98,15 +104,35 @@ function assertId(id: string): void {
 export class Tmux {
   constructor(readonly opts: TmuxOptions) {}
 
-  /** Environment for tmux processes, including pty-spawned clients. */
+  /**
+   * Environment for tmux processes, including pty-spawned clients. The
+   * server copies it into every session, so the app's own variables
+   * (Electron, Vite, Node flags) are left out of users' shells.
+   */
   processEnv(): Record<string, string> {
     const env: Record<string, string> = {}
-    for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v === undefined || APP_ONLY_ENV.test(k)) continue
+      env[k] = v
+    }
     return { ...env, ...this.opts.env }
   }
 
+  /**
+   * Re-apply the config to a server that was already running (e.g. started
+   * by an older Seam). A no-op when no server is running yet.
+   */
+  async reloadConfig(): Promise<void> {
+    try {
+      await this.run(['source-file', this.opts.configPath])
+    } catch (err) {
+      if (err instanceof TmuxError && isNoServer(err.stderr)) return
+      throw err
+    }
+  }
+
   private baseArgs(): string[] {
-    return ['-u', '-L', this.opts.socketName, '-f', this.opts.configPath]
+    return ['-u', '-S', this.opts.socketPath, '-f', this.opts.configPath]
   }
 
   async run(args: string[]): Promise<string> {
@@ -227,7 +253,8 @@ export class Tmux {
       await this.run(['kill-session', '-t', `=${id}`])
     } catch (err) {
       // Already gone is fine: the goal state is reached.
-      if (err instanceof TmuxError && (isNoServer(err.stderr) || /can't find session/.test(err.stderr))) return
+      // With no sessions left on the server tmux says "no current target".
+      if (err instanceof TmuxError && (isNoServer(err.stderr) || /can't find session|no current target/.test(err.stderr))) return
       throw err
     }
   }

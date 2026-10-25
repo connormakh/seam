@@ -12,8 +12,7 @@ export function makeTestTmux(): { tmux: Tmux; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'seam-test-'))
   const configPath = join(dir, 'tmux.conf')
   writeFileSync(configPath, TMUX_CONFIG)
-  const socketName = `seam-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}`
-  return { tmux: new Tmux({ binary, socketName, configPath }), dir }
+  return { tmux: new Tmux({ binary, socketPath: join(dir, 'tmux.sock'), configPath }), dir }
 }
 
 /** Poll until `check` returns a truthy value or the timeout passes. */

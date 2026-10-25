@@ -32,14 +32,16 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   })
   if (!binary) return { tmux: null, tmuxVersion: null, terminals: null }
 
-  mkdirSync(o.userDataDir, { recursive: true })
-  const configPath = join(o.userDataDir, 'tmux.conf')
+  const tmuxDir = join(o.userDataDir, 'tmux')
+  mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
+  const configPath = join(tmuxDir, 'tmux.conf')
   writeFileSync(configPath, TMUX_CONFIG)
 
+  // Dev builds get their own server so they never touch a running install.
+  const socketName = process.env['SEAM_TMUX_SOCKET'] ?? (o.isPackaged ? 'seam' : 'seam-dev')
   const tmux = new Tmux({
     binary,
-    // Dev builds get their own server so they never touch a running install.
-    socketName: process.env['SEAM_TMUX_SOCKET'] ?? (o.isPackaged ? 'seam' : 'seam-dev'),
+    socketPath: join(tmuxDir, `${socketName}.sock`),
     configPath,
     env: {
       // Finder-launched apps often have no locale, and tmux then mangles UTF-8.
@@ -51,6 +53,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   let tmuxVersion: string | null = null
   try {
     tmuxVersion = await tmux.version()
+    await tmux.reloadConfig()
   } catch {
     return { tmux: null, tmuxVersion: null, terminals: null }
   }
