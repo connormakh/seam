@@ -72,6 +72,22 @@ describe('CommandTracker (real bash in tmux)', () => {
     expect(r.droppedLines).toBe(70)
   })
 
+  it('times commands with the shell-reported clock', async () => {
+    const r = await runAndWait('sleep 0.4')
+    expect(r.endedAt! - r.startedAt).toBeGreaterThanOrEqual(380)
+    expect(r.endedAt! - r.startedAt).toBeLessThan(3000)
+  })
+
+  it('rebuilds records with their real timings from the events file after a restart', async () => {
+    const fresh = new CommandTracker({ tmux, eventsDir: join(dir, 'events'), onChange: () => {}, maxOutputLines: 50 })
+    const original = await tracker.list(id)
+    const rebuilt = await fresh.list(id)
+    expect(rebuilt.map((r) => [r.command, r.startedAt, r.endedAt, r.exitCode])).toEqual(
+      original.map((r) => [r.command, r.startedAt, r.endedAt, r.exitCode])
+    )
+    expect(rebuilt.at(-1)?.output).toBe(original.at(-1)?.output)
+  })
+
   it('reports started and finished commands to listeners', async () => {
     changes.length = 0
     await runAndWait('sleep 0.3; echo done')

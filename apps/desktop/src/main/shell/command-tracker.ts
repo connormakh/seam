@@ -34,6 +34,13 @@ export interface CommandTrackerOptions {
 
 const EVENTS_SUFFIX = '.events'
 
+/** Shell-reported time ("1729871234.123456" seconds) in ms, or now when missing. */
+function reportedTime(field: string | undefined): number {
+  // bash formats $EPOCHREALTIME with the locale's decimal separator.
+  const seconds = Number(field?.replace(',', '.'))
+  return field && Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : Date.now()
+}
+
 function unescapeField(s: string): string {
   return s.replace(/\\(\\|t|n|r)/g, (_m, c: string) => (c === 't' ? '\t' : c === 'n' ? '\n' : c === 'r' ? '\r' : '\\'))
 }
@@ -147,9 +154,9 @@ export class CommandTracker {
       const record: CommandRecord = {
         id: this.nextId++,
         terminalId,
-        cwd: unescapeField(rest[0] ?? ''),
-        command: unescapeField(rest.slice(1).join('\t')),
-        startedAt: Date.now(),
+        cwd: unescapeField(rest[1] ?? ''),
+        command: unescapeField(rest.slice(2).join('\t')),
+        startedAt: reportedTime(rest[0]),
         endedAt: null,
         exitCode: null,
         startLine: at,
@@ -167,8 +174,8 @@ export class CommandTracker {
     if (type === 'E') {
       const record = list.at(-1)
       if (!record || record.endedAt !== null) return
-      record.endedAt = Date.now()
-      record.exitCode = Number(rest[0])
+      record.endedAt = reportedTime(rest[0])
+      record.exitCode = Number(rest[1])
       record.endLine = at
       // Captures run one at a time per terminal, in order.
       const previous = this.captures.get(terminalId) ?? Promise.resolve()

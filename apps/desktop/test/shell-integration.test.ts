@@ -99,14 +99,19 @@ for (const shell of ['zsh', 'bash'] as const) {
       const all = await run('echo first; echo second', 2)
       const start = all.filter((e) => e.type === 'S').at(-1)!
       const end = all.filter((e) => e.type === 'E').at(-1)!
-      expect(start.rest).toEqual([home, 'echo first; echo second'])
-      expect(end.rest).toEqual(['0'])
+      expect(start.rest.slice(1)).toEqual([home, 'echo first; echo second'])
+      expect(end.rest[1]).toBe('0')
+      // Both shells here have $EPOCHREALTIME: seconds with a fraction, end after start.
+      const [t0, t1] = [Number(start.rest[0]), Number(end.rest[0])]
+      expect(t0).toBeGreaterThan(1_600_000_000)
+      expect(t1).toBeGreaterThanOrEqual(t0)
       expect(await outputBetween(tmux, id, start.line, end.line)).toBe('first\nsecond')
     })
 
     it('reports a failing exit code', async () => {
       const all = await run('(exit 3)', 3)
-      expect(all.at(-1)).toMatchObject({ type: 'E', rest: ['3'] })
+      expect(all.at(-1)?.type).toBe('E')
+      expect(all.at(-1)?.rest[1]).toBe('3')
     })
 
     it('reports a command with no output as an empty range', async () => {
@@ -119,7 +124,7 @@ for (const shell of ['zsh', 'bash'] as const) {
     it('escapes tabs, newlines and backslashes in the command line', async () => {
       const all = await run("printf 'a\\tb\\\\c\\n'", 5)
       const start = all.filter((e) => e.type === 'S').at(-1)!
-      expect(start.rest[1]).toBe("printf 'a\\\\tb\\\\\\\\c\\\\n'")
+      expect(start.rest[2]).toBe("printf 'a\\\\tb\\\\\\\\c\\\\n'")
     })
 
     it('does not report the prompt itself as a command', () => {
