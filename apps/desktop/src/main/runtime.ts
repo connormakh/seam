@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { ContextSender } from './context/send'
 import { adoptRunningSessions } from './control/adopt'
 import { ControlServer } from './control/server'
+import { AutoSync } from './hooks/auto-sync'
+import { installHook, writeHookSettings } from './hooks/install'
 import { Approvals } from './mcp/approvals'
 import { AuditLog } from './mcp/audit'
 import { installMcpServer, writeMcpConfig } from './mcp/install'
@@ -44,6 +46,8 @@ export interface Runtime {
   approvals: Approvals | null
   /** What Claude asked for and what happened; null without tmux. */
   audit: AuditLog | null
+  /** Shell activity told to Claude without being asked; null without tmux. */
+  autoSync: AutoSync | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -80,6 +84,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       control: null,
       approvals: null,
       audit: null,
+      autoSync: null,
       tmuxVersion: null,
       terminals: null,
       settings
@@ -116,6 +121,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       control: null,
       approvals: null,
       audit: null,
+      autoSync: null,
       tmuxVersion: null,
       terminals: null,
       settings
@@ -165,12 +171,25 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     // One setting until workspaces exist; the design doc puts it per workspace.
     policy: () => DEFAULT_POLICY
   })
+  const autoSync = new AutoSync({
+    tmux,
+    commands,
+    homeDir: o.homeDir,
+    contextDir: join(tmpdir(), 'seam-context')
+  })
   const control = new ControlServer({
     socketPath: join(o.userDataDir, 'control.sock'),
     methods: {
       'tools/list': async () => tools.list(),
       'tools/call': async (caller, params) =>
-        tools.call(caller, String(params['name'] ?? ''), (params['arguments'] as Record<string, unknown>) ?? {})
+        tools.call(caller, String(params['name'] ?? ''), (params['arguments'] as Record<string, unknown>) ?? {}),
+      hook: async (caller, params) => {
+        const event = (params['event'] as Record<string, unknown>) ?? {}
+        // Subagents get their own events; their turns are not the pair's.
+        if (event['agent_id']) return {}
+        const additionalContext = await autoSync.digest(caller)
+        return additionalContext ? { additionalContext } : {}
+      }
     }
   })
   try {
@@ -191,6 +210,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
 
   const claudeDir = join(o.userDataDir, 'claude')
   const mcpServerPath = installMcpServer(claudeDir)
+  const hookPath = installHook(claudeDir, process.execPath)
 
   const terminals = new TerminalService({
     tmux,
@@ -211,7 +231,14 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
         serverPath: mcpServerPath,
         nodePath: process.execPath
       })
-      const args = ['--mcp-config', configPath, ...(settings.shellOnly ? shellOnlyArgs('shell') : [])]
+      const hooksPath = writeHookSettings({ dir: claudeDir, sessionId, hookPath })
+      const args = [
+        '--mcp-config',
+        configPath,
+        '--settings',
+        hooksPath,
+        ...(settings.shellOnly ? shellOnlyArgs('shell') : [])
+      ]
       return { command: claudeCommand(shell, args), env }
     },
     shellLaunch: (id) =>
@@ -233,13 +260,14 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
           control.revokeSession(event.id)
           approvals.cancelSession(event.id)
           tools.forgetSession(event.id)
+          autoSync.forget(event.id)
         }
         o.send(IPC.terminalExit, event)
       }
     }
   })
 
-  return { tmux, eventsDir, commands, context, control, approvals, audit, tmuxVersion, terminals, settings }
+  return { tmux, eventsDir, commands, context, control, approvals, audit, autoSync, tmuxVersion, terminals, settings }
 }
 
 /**
