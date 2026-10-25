@@ -18,6 +18,11 @@ export interface TmuxOptions {
   /** Name for `tmux -L`; keeps Seam's server apart from the user's tmux. */
   socketName: string
   configPath: string
+  /**
+   * Extra environment for every tmux process. The first call starts the
+   * server, which keeps this environment for all sessions it creates.
+   */
+  env?: Record<string, string>
 }
 
 export interface NewSessionOptions {
@@ -73,6 +78,13 @@ function assertId(id: string): void {
 export class Tmux {
   constructor(readonly opts: TmuxOptions) {}
 
+  /** Environment for tmux processes, including pty-spawned clients. */
+  processEnv(): Record<string, string> {
+    const env: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
+    return { ...env, ...this.opts.env }
+  }
+
   private baseArgs(): string[] {
     return ['-u', '-L', this.opts.socketName, '-f', this.opts.configPath]
   }
@@ -82,7 +94,8 @@ export class Tmux {
     try {
       const { stdout } = await execFileAsync(this.opts.binary, full, {
         encoding: 'utf8',
-        maxBuffer: 64 * 1024 * 1024
+        maxBuffer: 64 * 1024 * 1024,
+        env: this.processEnv()
       })
       return stdout
     } catch (err) {

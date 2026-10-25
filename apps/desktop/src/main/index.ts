@@ -1,7 +1,11 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { IPC, type AppInfo } from '@shared/ipc'
+import { app, BrowserWindow, shell } from 'electron'
+import { registerIpc } from './ipc'
 import { attachSmokeTest } from './smoke'
+import { createRuntime, type Runtime } from './runtime'
+
+let mainWindow: BrowserWindow | null = null
+let runtime: Runtime | null = null
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -31,6 +35,14 @@ function createWindow(): BrowserWindow {
   })
   win.webContents.on('will-navigate', (event) => event.preventDefault())
 
+  // A reload or a closed window leaves no view behind; drop the clients so
+  // the renderer can attach again cleanly. Terminals keep running.
+  win.webContents.on('did-start-loading', () => runtime?.terminals?.detachAll())
+  win.on('closed', () => {
+    runtime?.terminals?.detachAll()
+    if (mainWindow === win) mainWindow = null
+  })
+
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (!app.isPackaged && devUrl) {
     void win.loadURL(devUrl)
@@ -40,23 +52,23 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-function registerIpc(): void {
-  ipcMain.handle(IPC.appInfo, (): AppInfo => ({
-    name: app.getName(),
-    version: app.getVersion(),
-    platform: process.platform,
-    electron: process.versions.electron ?? 'unknown'
-  }))
-}
-
-void app.whenReady().then(() => {
-  registerIpc()
-  createWindow()
+void app.whenReady().then(async () => {
+  runtime = await createRuntime({
+    userDataDir: app.getPath('userData'),
+    homeDir: app.getPath('home'),
+    isPackaged: app.isPackaged,
+    resourcesDir: process.resourcesPath,
+    send: (channel, payload) => mainWindow?.webContents.send(channel, payload)
+  })
+  registerIpc(runtime)
+  mainWindow = createWindow()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
   })
 })
+
+app.on('before-quit', () => runtime?.terminals?.detachAll())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
