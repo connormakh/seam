@@ -50,6 +50,10 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     tmux: rt.tmuxVersion
   }))
 
+  ipcMain.handle(IPC.contextSendLast, (_e, shellId: unknown, claudeId: unknown) => {
+    if (!rt.context) throw new Error('tmux is not installed')
+    return rt.context.sendLast(asId(shellId), asId(claudeId))
+  })
   ipcMain.handle(IPC.commandsLatest, (_e, id: unknown) => rt.commands?.latest(asId(id)) ?? null)
 
   ipcMain.handle(IPC.terminalList, () => (rt.terminals ? rt.terminals.list() : []))

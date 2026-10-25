@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
+import { tmpdir } from 'node:os'
+import { ContextSender } from './context/send'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
 import { claudeCommand, userShell } from './terminals/claude-command'
@@ -27,6 +29,8 @@ export interface Runtime {
   eventsDir: string | null
   /** Commands run in Seam shells, with their output; null without tmux. */
   commands: CommandTracker | null
+  /** Shell to Claude; null without tmux. */
+  context: ContextSender | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -38,7 +42,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     bundledDir: o.isPackaged ? join(o.resourcesDir, 'bin') : undefined,
     path: process.env['PATH']
   })
-  if (!binary) return { tmux: null, eventsDir: null, commands: null, tmuxVersion: null, terminals: null }
+  if (!binary) return { tmux: null, eventsDir: null, commands: null, context: null, tmuxVersion: null, terminals: null }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
   mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
@@ -63,7 +67,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmuxVersion = await tmux.version()
     await tmux.reloadConfig()
   } catch {
-    return { tmux: null, eventsDir: null, commands: null, tmuxVersion: null, terminals: null }
+    return { tmux: null, eventsDir: null, commands: null, context: null, tmuxVersion: null, terminals: null }
   }
 
   // Belt and braces for the postinstall fix; a no-op once it has run.
@@ -85,6 +89,13 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     onChange: (terminalId, latest) => o.send(IPC.commandsChanged, { terminalId, latest })
   })
   commands.start()
+
+  const context = new ContextSender({
+    tmux,
+    commands,
+    homeDir: o.homeDir,
+    contextDir: join(tmpdir(), 'seam-context')
+  })
 
   const terminals = new TerminalService({
     tmux,
@@ -109,5 +120,5 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     }
   })
 
-  return { tmux, eventsDir, commands, tmuxVersion, terminals }
+  return { tmux, eventsDir, commands, context, tmuxVersion, terminals }
 }

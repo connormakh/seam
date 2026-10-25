@@ -158,3 +158,31 @@ describe('Tmux server lifecycle', () => {
     }
   })
 })
+
+describe('Tmux.pasteText', () => {
+  it('pastes multi-line text as one bracketed paste, without running it', async () => {
+    const { tmux, dir } = makeTestTmux()
+    try {
+      // The program turns on bracketed paste (as Claude Code does); cat -v then
+      // shows the paste markers tmux adds as ^[[200~ and ^[[201~.
+      await tmux.newSession({
+        id: 'paste',
+        kind: 'claude',
+        cwd: dir,
+        command: ['sh', '-c', 'printf "\\033[?2004h"; stty raw -echo; cat -v']
+      })
+      await new Promise((r) => setTimeout(r, 300))
+      await tmux.pasteText('paste', 'line one\nline two\n')
+      const screen = await waitFor(async () => {
+        const t = await tmux.capturePane('paste')
+        return t.includes('[201~') ? t : null
+      })
+      expect(screen.replace(/\s+/g, ' ')).toContain('^[[200~line one')
+      expect(screen).toContain('line two')
+      expect(await tmux.run(['list-buffers'])).toBe('')
+    } finally {
+      await tmux.killServer()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

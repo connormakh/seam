@@ -34,6 +34,7 @@ const api: SeamApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
   commands: {
     latest: (terminalId) => ipcRenderer.invoke(IPC.commandsLatest, terminalId),
+    sendLastToClaude: (shellId, claudeId) => ipcRenderer.invoke(IPC.contextSendLast, shellId, claudeId),
     onChanged: (listener) => {
       commandListeners.add(listener)
       return () => commandListeners.delete(listener)

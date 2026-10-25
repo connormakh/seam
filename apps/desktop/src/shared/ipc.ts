@@ -24,6 +24,7 @@ export const IPC = {
   terminalExit: 'terminal:exit',
   menuCommand: 'menu:command',
   commandsLatest: 'commands:latest',
+  contextSendLast: 'context:send-last',
   /** main -> renderer: a terminal's latest command started or finished */
   commandsChanged: 'commands:changed'
 } as const
@@ -131,6 +132,16 @@ export interface TerminalApi {
   onExit(listener: (event: TerminalExitEvent) => void): () => void
 }
 
+/** What Shell to Claude pasted into Claude's prompt. */
+export interface SendContextResult {
+  command: string
+  exitCode: number | null
+  /** Output lines included. */
+  lines: number
+  truncated: boolean
+  masked: number
+}
+
 export interface CommandsChangedEvent {
   terminalId: string
   latest: CommandSummary
@@ -140,6 +151,11 @@ export interface CommandsApi {
   /** The latest command in a terminal, running or finished. */
   latest(terminalId: string): Promise<CommandSummary | null>
   onChanged(listener: (event: CommandsChangedEvent) => void): () => void
+  /**
+   * Paste the shell's last finished command, with its output, into the
+   * paired Claude session's prompt (not sent).
+   */
+  sendLastToClaude(shellId: string, claudeId: string): Promise<SendContextResult>
 }
 
 export interface SeamApi {

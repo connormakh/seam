@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -153,6 +153,38 @@ export class Tmux {
       const stderr = (e.stderr ?? '').trim()
       throw new TmuxError(stderr || e.message, args, stderr)
     }
+  }
+
+  /** Like run(), with `input` on stdin (for load-buffer -). */
+  async runWithInput(args: string[], input: string): Promise<string> {
+    const full = [...this.baseArgs(), ...args]
+    return new Promise((resolve, reject) => {
+      const child = spawn(this.opts.binary, full, { env: this.processEnv(), stdio: ['pipe', 'pipe', 'pipe'] })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d))
+      child.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d))
+      child.on('error', reject)
+      child.on('close', (code) => {
+        if (code === 0) resolve(stdout)
+        else reject(new TmuxError(stderr.trim() || `tmux exited with ${code}`, args, stderr.trim()))
+      })
+      child.stdin.end(input, 'utf8')
+    })
+  }
+
+  /**
+   * Paste text into a pane as one bracketed paste: programs that support it
+   * (Claude Code, modern shells) take it as typed-in text, not as keys to
+   * run line by line. Goes through a uniquely named tmux buffer that is
+   * deleted after use.
+   */
+  async pasteText(id: string, text: string): Promise<void> {
+    assertId(id)
+    const buffer = `seam-paste-${id}-${Date.now().toString(36)}`
+    await this.runWithInput(['load-buffer', '-b', buffer, '-'], text)
+    // Without -r, tmux turns LF into CR, as a terminal does for a real paste.
+    await this.run(['paste-buffer', '-p', '-d', '-b', buffer, '-t', `=${id}:`])
   }
 
   /** argv for a tmux client attached to a session, for spawning in a pty. */
