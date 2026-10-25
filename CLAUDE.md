@@ -99,6 +99,7 @@ Renderer: `tabs-model.ts` is a pure reducer of tabs, background units and focus.
 - `pane_current_command` is the name of the pane's foreground process group leader, not of its deepest child. A shell that runs a program as a child, without job control or `exec`, stays the leader and is what tmux reports. `claudeCommand` sets `set -m` for this reason.
 - tmux hands a pane the server's PATH and ignores `new-session -e PATH=...`. To control it, put `env PATH=...` in the command itself.
 - Python's `tty.setraw` flushes unread input (TCSAFLUSH). A stand-in for Claude must say when it is ready, or a paste sent during its startup is silently dropped.
+- Terminals outlive the app, so anything Seam keeps in memory about a running session has to be recoverable at startup. Control-socket tokens live in the Claude session's own tmux environment and are read back by `adoptRunningSessions`; without that, every session started before the last restart is told "not authorised" for the rest of its life.
 - A shell is reachable by Claude only if its `@seam-root` matches the session's. Terminals created before that option existed have an empty root and are invisible to every tool, which is the intended bias: an unreadable root must never widen what a session can see.
 - An allowlisted or session-approved prefix only matches a single simple command. Anything carrying `;`, `&`, `|`, a backtick, `$(`, or a redirect always asks, or `git status && rm -rf ~` would ride in on `git status`.
 - Electron's default macOS menu binds Cmd+W to close the window; Seam installs its own menu.

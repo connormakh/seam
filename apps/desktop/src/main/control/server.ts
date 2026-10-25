@@ -86,6 +86,18 @@ export class ControlServer {
     return token
   }
 
+  /**
+   * Take back a token issued before this process started. Seam's terminals
+   * outlive the app, so a Claude session started yesterday is still running
+   * with a token in its environment; without this it would keep calling in
+   * and being told it is nobody.
+   */
+  adoptToken(token: string, caller: Caller): void {
+    if (!token) return
+    this.tokens.set(token, caller)
+    this.bySession.set(caller.sessionId, token)
+  }
+
   /** Drop a session's token, so anything still holding it can no longer act. */
   revokeSession(sessionId: string): void {
     const existing = this.bySession.get(sessionId)

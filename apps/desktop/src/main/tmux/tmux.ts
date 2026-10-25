@@ -241,6 +241,22 @@ export class Tmux {
     }
   }
 
+  /**
+   * One variable from a session's own environment, or null. tmux keeps this
+   * for as long as the session lives, which is longer than Seam does.
+   */
+  async sessionEnv(id: string, name: string): Promise<string | null> {
+    assertId(id)
+    try {
+      const out = await this.run(['show-environment', '-t', `=${id}`, name])
+      const value = out.trim().slice(name.length + 1)
+      return out.startsWith(`${name}=`) && value ? value : null
+    } catch {
+      // "unknown variable", or the session has gone.
+      return null
+    }
+  }
+
   /** Hide a shell from Claude, or show it again. */
   async setPrivate(id: string, isPrivate: boolean): Promise<void> {
     assertId(id)

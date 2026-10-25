@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ApprovalDecision, ApprovalRequest, AuditEntry } from '@shared/ipc'
+import { adoptRunningSessions } from '../src/main/control/adopt'
 import { ControlServer } from '../src/main/control/server'
 import { Approvals } from '../src/main/mcp/approvals'
 import { AuditLog } from '../src/main/mcp/audit'
@@ -327,6 +328,50 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
       expect(result.text).toContain('not authorised')
     } finally {
       impostor.stop()
+    }
+  })
+
+
+  /**
+   * The bug this caught in the real app: terminals outlive Seam by design, so
+   * after a restart a Claude session is still running with a token the new
+   * process has never seen, and every tool call comes back "not authorised".
+   */
+  it('gives a session its tools back after Seam restarts under it', async () => {
+    const root = join(dir, 'project')
+    // A Claude pane started by the "previous" run, with its token in tmux.
+    const oldToken = control.issueToken({ sessionId: 'restarted', root })
+    await tmux.newSession({
+      id: 'restarted',
+      kind: 'claude',
+      cwd: root,
+      root,
+      title: 'claude',
+      env: { SEAM_SESSION_TOKEN: oldToken }
+    })
+
+    // Seam quits and comes back: a new server, which has never heard of it.
+    await control.stop()
+    const fresh = new ControlServer({ socketPath: join(dir, 'control.sock'), methods: control['o'].methods })
+    await fresh.start()
+    const before = new McpClient(serverPath, { SEAM_SOCKET: fresh.socketPath, SEAM_SESSION_TOKEN: oldToken })
+    try {
+      expect((await before.callTool('list_shells')).text).toContain('not authorised')
+    } finally {
+      before.stop()
+    }
+
+    expect(await adoptRunningSessions(tmux, fresh)).toBeGreaterThan(0)
+    const after = new McpClient(serverPath, { SEAM_SOCKET: fresh.socketPath, SEAM_SESSION_TOKEN: oldToken })
+    try {
+      const result = await after.callTool('list_shells')
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain('shell')
+    } finally {
+      after.stop()
+      await tmux.killSession('restarted')
+      await fresh.stop()
+      await control.start()
     }
   })
 

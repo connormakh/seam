@@ -4,6 +4,7 @@ import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
 import { tmpdir } from 'node:os'
 import { ContextSender } from './context/send'
+import { adoptRunningSessions } from './control/adopt'
 import { ControlServer } from './control/server'
 import { Approvals } from './mcp/approvals'
 import { AuditLog } from './mcp/audit'
@@ -160,6 +161,14 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     // Claude simply has no shell tools then, and everything else still works,
     // but say so: a silent failure here looks like the tools never existed.
     console.error('[seam] control socket unavailable, Claude gets no shell tools:', err)
+  }
+
+  // Claude sessions from before this launch are still running and still hold
+  // the token Seam gave them; tmux kept it, so take it back.
+  try {
+    await adoptRunningSessions(tmux, control)
+  } catch {
+    // Those sessions lose their tools until restarted; nothing else breaks.
   }
 
   const claudeDir = join(o.userDataDir, 'claude')
