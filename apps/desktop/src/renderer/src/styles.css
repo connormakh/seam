@@ -96,6 +96,18 @@ button {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.tab-pair {
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 9px;
+  margin-right: 2px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.7;
+  background: linear-gradient(to right, transparent 3.5px, currentColor 3.5px, currentColor 5px, transparent 5px);
+}
+
 .tab-title {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -140,13 +152,89 @@ button {
   min-height: 0;
 }
 
+.unit {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.unit[hidden] {
+  display: none;
+}
+
+/* While dragging the divider, terminals must not steal the pointer or select text. */
+.unit-dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.unit-dragging .pane-body {
+  pointer-events: none;
+}
+
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex-grow: 0;
+  flex-shrink: 1;
+}
+
+.pane-header {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 26px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pane-label {
+  font-weight: 600;
+}
+
+.pane-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+}
+
+/* Only pairs mark focus: with one pane there is nothing to choose between. */
+.pane-focused .pane-header {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.pane-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 .terminal-host {
   position: absolute;
   inset: 6px 4px 4px 10px;
 }
 
-.terminal-host[hidden] {
-  display: none;
+.divider {
+  flex: none;
+  width: 5px;
+  margin: 0 -2px;
+  z-index: 1;
+  cursor: col-resize;
+  background: linear-gradient(to right, transparent 2px, var(--border) 2px, var(--border) 3px, transparent 3px);
+}
+
+.divider:hover,
+.unit-dragging .divider {
+  background: linear-gradient(to right, transparent 1px, var(--accent) 1px, var(--accent) 4px, transparent 4px);
 }
 
 .empty {
@@ -312,4 +400,24 @@ code {
    ever shows a stale size. Wheel scrolling goes to tmux history. */
 .terminal-host .scrollbar {
   display: none !important;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.button-primary {
+  border-color: var(--accent);
+  background: rgb(106 162 255 / 0.14);
+}
+
+.button-primary:hover {
+  background: rgb(106 162 255 / 0.22);
+}
+
+.bg-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

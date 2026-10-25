@@ -6,7 +6,11 @@ import { terminalOptions } from './theme'
 
 interface Props {
   id: string
-  active: boolean
+  /** On screen (its tab is active). */
+  visible: boolean
+  /** Should hold the keyboard while visible. */
+  focused: boolean
+  onFocus?: (id: string) => void
 }
 
 /**
@@ -15,12 +19,14 @@ interface Props {
  * The tmux client is attached the first time the view is visible, at its
  * real size, so tabs restored in the background cost nothing until opened
  * and never draw at a placeholder size. Unmounting detaches (the terminal
- * keeps running). Inactive tabs stay mounted but hidden to keep their screen.
+ * keeps running). Hidden views stay mounted to keep their screen.
  */
-export function TerminalView({ id, active }: Props): React.JSX.Element {
+export function TerminalView({ id, visible, focused, onFocus }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const showRef = useRef<() => void>(() => {})
+  const onFocusRef = useRef(onFocus)
+  onFocusRef.current = onFocus
 
   useEffect(() => {
     const host = hostRef.current
@@ -35,6 +41,11 @@ export function TerminalView({ id, active }: Props): React.JSX.Element {
 
     // App shortcuts come from the menu; keep Cmd combos away from the shell.
     term.attachCustomKeyEventHandler((e) => !(e.metaKey && e.type === 'keydown' && !['c', 'v'].includes(e.key)))
+
+    // Clicking into a pane makes it the focused side of its pair.
+    const textarea = term.textarea
+    const reportFocus = (): void => onFocusRef.current?.(id)
+    textarea?.addEventListener('focus', reportFocus)
 
     // Listen before attaching so the initial redraw from tmux is not missed.
     const offData = api.onData(id, (data) => term.write(data))
@@ -54,13 +65,14 @@ export function TerminalView({ id, active }: Props): React.JSX.Element {
     showRef.current = show
     show()
 
-    // Refits on window resizes, and catches the moment a hidden tab is shown.
+    // Refits on window and divider resizes, and catches a hidden tab being shown.
     const observer = new ResizeObserver(() => show())
     observer.observe(host)
 
     return () => {
       disposed = true
       observer.disconnect()
+      textarea?.removeEventListener('focus', reportFocus)
       offData()
       input.dispose()
       resized.dispose()
@@ -72,12 +84,12 @@ export function TerminalView({ id, active }: Props): React.JSX.Element {
   }, [id])
 
   useEffect(() => {
-    if (!active) return
+    if (!visible) return
     showRef.current()
-    termRef.current?.focus()
-  }, [active])
+    if (focused) termRef.current?.focus()
+  }, [visible, focused])
 
-  return <div ref={hostRef} className="terminal-host" data-terminal-id={id} hidden={!active} />
+  return <div ref={hostRef} className="terminal-host" data-terminal-id={id} />
 }
 
 /** Fits the terminal to its host. Returns false while the host is hidden or has no size. */
