@@ -88,6 +88,12 @@ export function installMenu(
           accelerator: mac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
           click: () => send({ type: 'send-last' })
         },
+        {
+          id: 'toggle-activity',
+          label: 'Activity',
+          accelerator: key('A', 'Shift+'),
+          click: () => send({ type: 'toggle-activity' })
+        },
         { type: 'separator' },
         {
           id: 'shell-only',

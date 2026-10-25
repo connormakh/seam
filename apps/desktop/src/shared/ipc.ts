@@ -43,6 +43,7 @@ export type MenuCommand =
   | { type: 'new-shell' }
   | { type: 'toggle-focus' }
   | { type: 'send-last' }
+  | { type: 'toggle-activity' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }

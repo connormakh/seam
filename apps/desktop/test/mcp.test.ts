@@ -320,6 +320,17 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
     expect(records.find((r) => r.command.includes('TOKEN='))?.actor).toBe('user')
   })
 
+  it('records reading too, so the Activity panel is the whole story', async () => {
+    const before = audit.list().length
+    await client.callTool('list_shells')
+    await client.callTool('read_shell', { shell: 'shell' })
+    const added = audit.list().slice(before)
+    expect(added.map((e) => [e.tool, e.outcome])).toEqual([
+      ['list_shells', 'allowed'],
+      ['read_shell', 'allowed']
+    ])
+  })
+
   it('answers an unknown shell and an unknown tool as errors Claude can read', async () => {
     const missing = await client.callTool('read_shell', { shell: 'nope' })
     expect(missing.isError).toBe(true)

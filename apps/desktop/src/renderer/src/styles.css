@@ -8,6 +8,7 @@
   --accent: #6aa2ff;
   --danger: #ef6b73;
   --titlebar-height: 38px;
+  --activity-width: min(480px, 40vw);
   color-scheme: dark;
   font-family:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
@@ -595,4 +596,113 @@ code {
   font-size: 10px;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+/* What Claude has done in the shells. A drawer, not a tab: it is read
+   alongside the terminal it describes, not instead of it, which is why the
+   workspace makes room rather than being covered by it. */
+.app-with-activity .workspace {
+  margin-right: var(--activity-width);
+}
+
+.activity {
+  position: absolute;
+  top: var(--titlebar-height);
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  width: var(--activity-width);
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 35%);
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activity-count {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.activity-close {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.activity-close:hover {
+  color: var(--text);
+}
+
+.activity-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.activity-empty {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.activity-row:hover {
+  background: var(--bg-hover);
+}
+
+.activity-time {
+  color: var(--text-muted);
+}
+
+.activity-tool {
+  color: var(--accent);
+}
+
+.activity-detail {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-outcome {
+  color: var(--text-muted);
+}
+
+/* Anything that did not simply happen is worth the eye stopping on. */
+.activity-row[data-outcome='denied'] .activity-outcome,
+.activity-row[data-outcome='failed'] .activity-outcome {
+  color: var(--danger);
+}
+
+.activity-row[data-outcome='approved'] .activity-outcome {
+  color: var(--accent);
 }

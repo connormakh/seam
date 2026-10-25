@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AppInfo, ApprovalDecision, ApprovalRequest, CommandSummary } from '@shared/ipc'
+import type { AppInfo, ApprovalDecision, ApprovalRequest, AuditEntry, CommandSummary } from '@shared/ipc'
+import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
 import { initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
@@ -19,6 +20,8 @@ export function App(): React.JSX.Element {
   const [latest, setLatest] = useState<Record<string, CommandSummary>>({})
   // Keyed by the shell a card targets: one pane shows at most one at a time.
   const [approvals, setApprovals] = useState<Record<string, ApprovalRequest>>({})
+  const [activity, setActivity] = useState<AuditEntry[]>([])
+  const [activityOpen, setActivityOpen] = useState(false)
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
   const modelRef = useRef(model)
@@ -59,6 +62,12 @@ export function App(): React.JSX.Element {
       offAsked()
       offDone()
     }
+  }, [])
+
+  // The record outlives any one window, so load it and then follow it.
+  useEffect(() => {
+    void window.seam.audit.list().then(setActivity)
+    return window.seam.audit.onAppended((entry) => setActivity((prev) => [...prev, entry]))
   }, [])
 
   const decideApproval = useCallback((id: string, decision: ApprovalDecision) => {
@@ -208,6 +217,9 @@ export function App(): React.JSX.Element {
         case 'toggle-focus':
           dispatch({ type: 'toggle-focus' })
           break
+        case 'toggle-activity':
+          setActivityOpen((open) => !open)
+          break
         case 'send-last': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           if (unit && isPair(unit)) void sendLast(unit)
@@ -223,7 +235,7 @@ export function App(): React.JSX.Element {
   const tmuxMissing = info !== null && info.tmux === null
 
   return (
-    <div className="app">
+    <div className={`app${activityOpen ? ' app-with-activity' : ''}`}>
       <header className="titlebar">
         <span className="titlebar-name">Seam</span>
         {tabs.length > 0 && (
@@ -252,6 +264,8 @@ export function App(): React.JSX.Element {
           {notice}
         </div>
       )}
+
+      {activityOpen && <ActivityPanel entries={activity} onClose={() => setActivityOpen(false)} />}
 
       <main className="workspace">
         {tabs.map((u) => (

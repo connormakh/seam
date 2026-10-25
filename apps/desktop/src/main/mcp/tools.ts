@@ -141,6 +141,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   }
 ]
 
+/** The tools that only look; they need no policy, just a note in the record. */
+const READ_TOOLS = new Set(['list_shells', 'read_shell', 'list_commands', 'read_command_output', 'wait_for_output'])
+
 export class ToolError extends Error {
   override name = 'ToolError'
 }
@@ -174,6 +177,20 @@ export class Tools {
 
   async call(caller: Caller, name: string, args: Record<string, unknown>): Promise<ToolResult> {
     try {
+      // The write tools record their own policy decision in permit(); the
+      // read ones are noted here, so the Activity panel shows everything
+      // Claude did and not only what it changed.
+      if (READ_TOOLS.has(name)) {
+        const target = typeof args['shell'] === 'string' ? args['shell'] : ''
+        this.o.audit?.append({
+          sessionId: caller.sessionId,
+          shellId: null,
+          tool: name,
+          detail: target,
+          outcome: 'allowed',
+          why: 'reading is always allowed'
+        })
+      }
       switch (name) {
         case 'list_shells':
           return { text: await this.listShells(caller) }

@@ -1,0 +1,77 @@
+import { useEffect, useRef } from 'react'
+import type { AuditEntry } from '@shared/ipc'
+
+interface Props {
+  entries: AuditEntry[]
+  onClose(): void
+}
+
+/** 14:03:51, which is all anyone needs to line a row up with their terminal. */
+function clock(at: number): string {
+  return new Date(at).toLocaleTimeString(undefined, { hour12: false })
+}
+
+/**
+ * What Claude has done in the shells.
+ *
+ * Nothing stands between Claude and the shell any more, so this is where the
+ * question "what has it been doing in there" is answered. It reads bottom-up
+ * like the terminals it describes: newest last, and it follows.
+ */
+export function ActivityPanel({ entries, onClose }: Props): React.JSX.Element {
+  const listRef = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+
+  // Follow the end, unless the user has scrolled back to read something.
+  useEffect(() => {
+    const el = listRef.current
+    if (el && pinned.current) el.scrollTop = el.scrollHeight
+  }, [entries])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <aside className="activity" aria-label="Claude activity">
+      <header className="activity-header">
+        <span className="activity-title">Activity</span>
+        <span className="activity-count">{entries.length > 0 ? `${entries.length}` : ''}</span>
+        <button className="activity-close" onClick={onClose} title="Close (Esc)" aria-label="Close activity">
+          ×
+        </button>
+      </header>
+      <div
+        className="activity-list"
+        ref={listRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+        }}
+      >
+        {entries.length === 0 ? (
+          <p className="activity-empty">
+            Nothing yet. What Claude reads and runs in your shells shows up here.
+          </p>
+        ) : (
+          entries.map((entry) => (
+            <div key={entry.id} className="activity-row" data-outcome={entry.outcome}>
+              <span className="activity-time">{clock(entry.at)}</span>
+              <span className="activity-tool">{entry.tool}</span>
+              <span className="activity-detail" title={entry.detail}>
+                {entry.detail}
+              </span>
+              <span className="activity-outcome" title={entry.why}>
+                {entry.outcome}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </aside>
+  )
+}

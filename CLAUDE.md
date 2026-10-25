@@ -10,13 +10,14 @@ Done:
 - **Terminal skeleton:** tabs backed by a private tmux server; closing a tab keeps it running; relaunch restores tabs with screens intact.
 - **Paired workspaces:** Cmd+T picks a folder and opens Claude Code (left) + shell (right) with a draggable divider; Ctrl+` switches focus.
 - **Shell to Claude:** zsh/bash integration records every command (exit code, cwd, timing, output range); "Send to Claude" / "Ask Claude" / Cmd+Shift+Enter pastes the last command and its output into Claude's prompt, unsent.
+- **Activity panel:** Shell menu > Activity (Cmd+Shift+A). Every tool call Claude makes, reading included, with its time and what the policy decided. With nothing standing between Claude and the shell, this is where "what has it been doing in there" is answered.
 - **Auto sync:** a `seam-hook` on `UserPromptSubmit` and `PostToolUse` tells Claude what the user ran in the shell, without anyone asking. Successful commands collapse to one line, failures carry their last 40 lines and a path to the rest, only what is new since the last delivery goes, capped at 2 KB. Claude's own commands are left out, and a quiet shell costs nothing.
 - **One shared terminal:** by default a pair starts Claude with `--disallowedTools Bash`, so every command it runs goes through `run_in_shell` into the companion terminal, and the policy is `allow`, so it just runs. Commands Seam typed are marked "by Claude" in the shell's header. `SEAM_SHELL_ONLY=0`, or the Shell menu, gives Claude its own Bash back for new pairs.
 - **Hooks (auto sync, and the rest of the hook layer to come):
 - `hooks/install.ts` writes `seam-hook` and a per-session `--settings` file. The hook forwards its stdin event to the control socket and prints what comes back; no socket, no answer or a bad one all mean print nothing and exit 0, because a hook that fails loudly stalls the user's turn.
 - `hooks/auto-sync.ts` builds the digest and remembers what each session has already been told.
 
-Claude to shell:** a `seam` MCP server over a control socket, with `list_shells`, `read_shell`, `list_commands`, `read_command_output`, `run_in_shell`, `send_keys` and `wait_for_output`. Policy is allow by default, because the shell is shared; `ask`, `allowlist` and `readonly` are there for anyone who wants them. A short denylist always asks, whatever the policy. Every call is audited.
+Claude to shell:** a `seam` MCP server over a control socket, with `list_shells`, `read_shell`, `list_commands`, `read_command_output`, `run_in_shell`, `send_keys` and `wait_for_output`. Policy is allow by default, because the shell is shared; `ask`, `allowlist` and `readonly` are there for anyone who wants them. A short denylist always asks, whatever the policy. Every call is audited and shown in the Activity panel.
 
 Next, in order:
 1. **Finish Claude to shell.** The tools, policy and approval card are in. Still missing: UI for the private-shell toggle (`@seam-private` exists, nothing sets it), an Activity panel over the audit log, per-workspace policy (one default until workspaces exist), and the "by Claude" gutter mark on commands Seam typed.
