@@ -10,9 +10,10 @@ Done:
 - **Terminal skeleton:** tabs backed by a private tmux server; closing a tab keeps it running; relaunch restores tabs with screens intact.
 - **Paired workspaces:** Cmd+T picks a folder and opens Claude Code (left) + shell (right) with a draggable divider; Ctrl+` switches focus.
 - **Shell to Claude:** zsh/bash integration records every command (exit code, cwd, timing, output range); "Send to Claude" / "Ask Claude" / Cmd+Shift+Enter pastes the last command and its output into Claude's prompt, unsent.
+- **Claude to shell:** a `seam` MCP server over a control socket, with `list_shells`, `read_shell`, `list_commands`, `read_command_output`, `run_in_shell`, `send_keys` and `wait_for_output`. Writes go through an approval card on the target shell's pane; policy is ask (default) / allowlist / read-only, with a denylist that always asks. Every call is audited.
 
 Next, in order:
-1. **Claude to shell.** A `seam` MCP server (stdio, passed with `--mcp-config` when Seam starts Claude) with tools `list_shells`, `read_shell`, `list_commands`, `run_in_shell`, `send_keys`, `wait_for_output`. Write tools go through an approval card on the target shell pane. Policy per workspace: ask (default), allowlisted prefixes, read-only. Private shells are hidden from all tools. Hard denylist always asks (`rm -rf`, `git push --force`, `sudo`, `DROP`, writes to `~/.ssh`). Every call is audited. Shell output is untrusted input to Claude: wrap it in tags.
+1. **Finish Claude to shell.** The tools, policy and approval card are in. Still missing: UI for the private-shell toggle (`@seam-private` exists, nothing sets it), an Activity panel over the audit log, per-workspace policy (one default until workspaces exist), and the "by Claude" gutter mark on commands Seam typed.
 2. **Claude Code hooks**, installed per session with `--settings` (never in the user's repo or global settings): status badges (Working / Waiting for you / Idle) from `UserPromptSubmit`, `Notification`, `PermissionRequest`, `Stop`; **attach mode** (queue shell context, delivered via `UserPromptSubmit` `additionalContext`); **auto sync** (per-pair toggle, digest of new shell activity via `UserPromptSubmit` and `PostToolUse`, capped at 2 KB, errors only for long-running processes). Ignore turn events that carry `agent_id` (subagents). Use `last_assistant_message`, not the transcript file, which lags.
 3. **Session browser:** index `~/.claude/projects/*/*.jsonl` by project and cwd, FTS search, resume into a pair (`claude --resume <id>`, branch with `--fork-session`).
 4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks, final name, packaging (signing, bundled tmux, auto-update).
@@ -63,6 +64,12 @@ Shell to Claude:
 - `shell/command-tracker.ts` follows those files and captures each finished command's output from tmux history immediately.
 - `context/shell-context.ts` formats the `<shell-context>` block (tail of output, 200 lines / 16 KB, secrets masked). `context/send.ts` pastes it into the Claude pane as one bracketed paste, and refuses unless the target is a real pair and Claude Code (not a shell) is in the foreground.
 
+Claude to shell:
+- `control/server.ts` is the only way in from a process Seam does not own (the MCP server now, hooks later): one JSON object per line on a 0600 socket, every request carrying a per-session token. The token is issued when the pair starts, carried in the Claude pane's environment, and revoked when the terminal ends.
+- `mcp/install.ts` writes `seam-mcp.mjs` into app-support and a per-session `--mcp-config`. The server is deliberately dumb: it asks the socket for the tool list and forwards calls, so nothing that decides anything runs in a process Claude controls.
+- `mcp/tools.ts` holds the tools. `shells()` is the only place scope is decided: same `@seam-root`, not `@seam-private`. Output is masked and wrapped in `<shell-output>`.
+- `mcp/policy.ts` decides allow/ask/deny before anything is typed; `mcp/approvals.ts` parks the tool call until the card on the shell's pane is answered.
+
 Renderer: `tabs-model.ts` is a pure reducer of tabs, background units and focus. A unit is one terminal or a [claude, shell] pair. Keep state changes there and test them.
 
 ## Conventions
@@ -92,4 +99,6 @@ Renderer: `tabs-model.ts` is a pure reducer of tabs, background units and focus.
 - `pane_current_command` is the name of the pane's foreground process group leader, not of its deepest child. A shell that runs a program as a child, without job control or `exec`, stays the leader and is what tmux reports. `claudeCommand` sets `set -m` for this reason.
 - tmux hands a pane the server's PATH and ignores `new-session -e PATH=...`. To control it, put `env PATH=...` in the command itself.
 - Python's `tty.setraw` flushes unread input (TCSAFLUSH). A stand-in for Claude must say when it is ready, or a paste sent during its startup is silently dropped.
+- A shell is reachable by Claude only if its `@seam-root` matches the session's. Terminals created before that option existed have an empty root and are invisible to every tool, which is the intended bias: an unreadable root must never widen what a session can see.
+- An allowlisted or session-approved prefix only matches a single simple command. Anything carrying `;`, `&`, `|`, a backtick, `$(`, or a redirect always asks, or `git status && rm -rf ~` would ride in on `git status`.
 - Electron's default macOS menu binds Cmd+W to close the window; Seam installs its own menu.

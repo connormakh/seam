@@ -26,7 +26,15 @@ export const IPC = {
   commandsLatest: 'commands:latest',
   contextSendLast: 'context:send-last',
   /** main -> renderer: a terminal's latest command started or finished */
-  commandsChanged: 'commands:changed'
+  commandsChanged: 'commands:changed',
+  /** Claude to shell: cards waiting, the user's answer, and the audit feed */
+  approvalsOpen: 'approvals:open',
+  approvalsResolve: 'approvals:resolve',
+  /** main -> renderer */
+  approvalAsked: 'approvals:asked',
+  approvalDone: 'approvals:done',
+  auditAppended: 'audit:appended',
+  auditList: 'audit:list'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -64,6 +72,38 @@ export interface TerminalInfo {
   open: boolean
   /** The other half of a Claude + shell pair, or null for a standalone terminal. */
   pairId: string | null
+}
+
+/** What Claude wants to do in a shell, waiting on the user's answer. */
+export interface ApprovalRequest {
+  id: string
+  /** The Claude terminal that asked. */
+  sessionId: string
+  /** The shell it wants to act on; the card appears on this pane. */
+  shellId: string
+  shellTitle: string
+  /** What it would run, or the keys it would send, exactly as given. */
+  command: string
+  tool: 'run_in_shell' | 'send_keys'
+  /** What "approve similar" would remember, e.g. "git status". */
+  similar: string
+  /** Why it is being asked rather than just run, in the card's own words. */
+  why: string
+  askedAt: number
+}
+
+export type ApprovalDecision = 'approve' | 'approve-similar' | 'deny'
+
+/** One line of the record of what Claude asked for and what happened. */
+export interface AuditEntry {
+  id: number
+  at: number
+  sessionId: string
+  shellId: string | null
+  tool: string
+  detail: string
+  outcome: 'allowed' | 'approved' | 'denied' | 'failed'
+  why: string
 }
 
 /** A command run in a Seam shell, without its output. */
@@ -160,6 +200,16 @@ export interface CommandsApi {
 }
 
 export interface SeamApi {
+  approvals: {
+    open: () => Promise<ApprovalRequest[]>
+    resolve: (id: string, decision: ApprovalDecision) => void
+    onAsked: (listener: (request: ApprovalRequest) => void) => () => void
+    onDone: (listener: (event: { id: string }) => void) => () => void
+  }
+  audit: {
+    list: () => Promise<AuditEntry[]>
+    onAppended: (listener: (entry: AuditEntry) => void) => () => void
+  }
   appInfo(): Promise<AppInfo>
   commands: CommandsApi
   /** Native folder picker. Resolves null when cancelled. */

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { IPC, type AppInfo } from '@shared/ipc'
+import { IPC, type AppInfo, type ApprovalDecision, type ApprovalRequest, type AuditEntry } from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
 import type { Runtime } from './runtime'
 import { asCreateOptions, asCreatePairOptions, asId, asSize } from './validate'
@@ -22,6 +22,18 @@ function quietly(fn: () => void): void {
 }
 
 export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
+  // Claude to shell. A reopened tab asks what is already waiting, because the
+  // card lives in main: it must outlive the view it is drawn on.
+  ipcMain.handle(IPC.approvalsOpen, async (): Promise<ApprovalRequest[]> => rt.approvals?.open() ?? [])
+  ipcMain.handle(IPC.auditList, async (): Promise<AuditEntry[]> => rt.audit?.list() ?? [])
+  ipcMain.on(IPC.approvalsResolve, (_e, id: unknown, decision: unknown) =>
+    quietly(() => {
+      if (typeof id !== 'string') return
+      if (decision !== 'approve' && decision !== 'approve-similar' && decision !== 'deny') return
+      rt.approvals?.resolve(id, decision as ApprovalDecision)
+    })
+  )
+
   // The picker opens where the last pick was, which is usually the next project's neighbour.
   let lastFolder = opts.homeDir
   ipcMain.handle(IPC.pickFolder, async (e): Promise<string | null> => {

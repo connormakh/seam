@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AppInfo, CommandSummary } from '@shared/ipc'
+import type { AppInfo, ApprovalDecision, ApprovalRequest, CommandSummary } from '@shared/ipc'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
 import { initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
@@ -17,6 +17,8 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [latest, setLatest] = useState<Record<string, CommandSummary>>({})
+  // Keyed by the shell a card targets: one pane shows at most one at a time.
+  const [approvals, setApprovals] = useState<Record<string, ApprovalRequest>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
   const modelRef = useRef(model)
@@ -41,6 +43,29 @@ export function App(): React.JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shellIds])
+
+  // Cards live in main, so a window that opens late still sees what is waiting.
+  useEffect(() => {
+    void window.seam.approvals.open().then((open) => {
+      setApprovals(Object.fromEntries(open.map((r) => [r.shellId, r])))
+    })
+    const offAsked = window.seam.approvals.onAsked((request) =>
+      setApprovals((prev) => ({ ...prev, [request.shellId]: request }))
+    )
+    const offDone = window.seam.approvals.onDone(({ id }) =>
+      setApprovals((prev) => Object.fromEntries(Object.entries(prev).filter(([, r]) => r.id !== id)))
+    )
+    return () => {
+      offAsked()
+      offDone()
+    }
+  }, [])
+
+  const decideApproval = useCallback((id: string, decision: ApprovalDecision) => {
+    window.seam.approvals.resolve(id, decision)
+    // Main confirms with approvalDone, but take it down now: the user answered.
+    setApprovals((prev) => Object.fromEntries(Object.entries(prev).filter(([, r]) => r.id !== id)))
+  }, [])
 
   useEffect(() => {
     if (!notice) return
@@ -235,8 +260,10 @@ export function App(): React.JSX.Element {
             unit={u}
             visible={u.key === activeKey}
             latest={latest}
+            approvals={approvals}
             onFocus={onFocus}
             onSend={(unit) => void sendLast(unit)}
+            onDecide={decideApproval}
           />
         ))}
 

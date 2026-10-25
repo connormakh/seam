@@ -2,7 +2,10 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { ApprovalDecision, ApprovalRequest, AuditEntry } from '@shared/ipc'
 import { ControlServer } from '../src/main/control/server'
+import { Approvals } from '../src/main/mcp/approvals'
+import { AuditLog } from '../src/main/mcp/audit'
 import { installMcpServer } from '../src/main/mcp/install'
 import { Tools } from '../src/main/mcp/tools'
 import { CommandTracker } from '../src/main/shell/command-tracker'
@@ -67,6 +70,10 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
   let tracker: CommandTracker
   let client: McpClient
   let serverPath: string
+  let audit: AuditLog
+  /** How the test answers the card Claude's write tools put up. */
+  let answer: ApprovalDecision | 'ignore'
+  let asked: ApprovalRequest[]
   const shellId = 'mcp-shell'
 
   beforeAll(async () => {
@@ -87,7 +94,27 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
           tools.call(caller, String(params['name'] ?? ''), (params['arguments'] as Record<string, unknown>) ?? {})
       }
     })
-    const tools = new Tools({ tmux, commands: tracker, homeDir: home })
+    audit = new AuditLog({ onAppend: () => {} })
+    asked = []
+    answer = 'deny'
+    const approvals = new Approvals({
+      // Stands in for the card on the shell's pane: same promise, same answers.
+      present: (request) => {
+        asked.push(request)
+        if (answer !== 'ignore') setTimeout(() => approvals.resolve(request.id, answer as ApprovalDecision), 0)
+      },
+      dismiss: () => {},
+      timeoutMs: 1500
+    })
+    const tools = new Tools({
+      tmux,
+      commands: tracker,
+      homeDir: home,
+      approvals,
+      audit,
+      policy: () => ({ mode: 'ask', allowPrefixes: [] }),
+      pollMs: 25
+    })
     await control.start()
 
     // The session's workspace, and three shells: one in it, one somewhere
@@ -136,7 +163,15 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
 
     const listed = await client.request('tools/list')
     const names = ((listed['result'] as { tools: { name: string }[] }).tools ?? []).map((t) => t.name)
-    expect(names).toEqual(['list_shells', 'read_shell', 'list_commands', 'read_command_output'])
+    expect(names).toEqual([
+      'list_shells',
+      'read_shell',
+      'list_commands',
+      'run_in_shell',
+      'send_keys',
+      'wait_for_output',
+      'read_command_output'
+    ])
   })
 
   it('lists only the shells in the session workspace, never a private one', async () => {
@@ -168,6 +203,110 @@ describe('seam MCP server (real socket, real tmux, real bash)', () => {
     const output = await client.callTool('read_command_output', { shell: 'shell', command_id: id })
     expect(output.text).toContain('TOKEN=[masked]')
     expect(output.text).not.toContain('supersecretvalue')
+  })
+
+
+  it('runs a command once the user approves, and hands back its exit code and output', async () => {
+    answer = 'approve'
+    asked = []
+    const result = await client.callTool('run_in_shell', { shell: 'shell', command: 'echo hello-from-claude; (exit 7)' })
+
+    // The card named the shell it would act on, and the command verbatim.
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toMatchObject({ shellId, shellTitle: 'shell', tool: 'run_in_shell' })
+    expect(asked[0]!.command).toBe('echo hello-from-claude; (exit 7)')
+
+    expect(result.isError).toBe(false)
+    expect(result.text).toContain('hello-from-claude')
+    expect(result.text).toContain('exit 7')
+    // It was typed into the user's own shell, so it is in their history too.
+    expect(await tmux.capturePane(shellId)).toContain('hello-from-claude')
+  })
+
+  it('types nothing when the user denies', async () => {
+    answer = 'deny'
+    const result = await client.callTool('run_in_shell', { shell: 'shell', command: 'echo should-never-appear' })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/you denied it/)
+    expect(await tmux.capturePane(shellId)).not.toContain('should-never-appear')
+  })
+
+  it('refuses rather than waits when nobody answers the card', async () => {
+    answer = 'ignore'
+    const result = await client.callTool('run_in_shell', { shell: 'shell', command: 'echo nobody-home' })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/nobody answered/)
+    expect(await tmux.capturePane(shellId)).not.toContain('nobody-home')
+  })
+
+  it('stops asking once the user approves similar, but never for the dangerous ones', async () => {
+    answer = 'approve-similar'
+    asked = []
+    // The card offers the verb here, because -la is an argument and not a
+    // subcommand; it says so on the button, so what is granted is what was read.
+    await client.callTool('run_in_shell', { shell: 'shell', command: 'ls -la' })
+    expect(asked).toHaveLength(1)
+    expect(asked[0]!.similar).toBe('ls')
+
+    // A second ls needs no card now.
+    answer = 'ignore'
+    const second = await client.callTool('run_in_shell', { shell: 'shell', command: 'ls -R' })
+    expect(second.isError).toBe(false)
+    expect(asked).toHaveLength(1)
+
+    // Chaining off the remembered prefix does not inherit it. (That a
+    // remembered prefix never covers a denylisted command is in policy.test.ts,
+    // where there is a destructive command that actually starts with one.)
+    answer = 'deny'
+    const chained = await client.callTool('run_in_shell', { shell: 'shell', command: 'ls && echo smuggled' })
+    expect(chained.isError).toBe(true)
+    expect(asked).toHaveLength(2)
+    expect(await tmux.capturePane(shellId)).not.toContain('smuggled')
+  })
+
+  it('will not type into a shell that is in the middle of something', async () => {
+    await tmux.sendKeys(shellId, 'sleep 4', { literal: true, enter: true })
+    await waitFor(async () => (await tracker.latest(shellId))?.running === true)
+    answer = 'approve'
+    const result = await client.callTool('run_in_shell', { shell: 'shell', command: 'echo too-soon' })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/shell busy: sleep 4/)
+
+    // send_keys is how you reach a shell that is busy.
+    answer = 'approve'
+    const keys = await client.callTool('send_keys', { shell: 'shell', keys: 'C-c' })
+    expect(keys.isError).toBe(false)
+    await waitFor(async () => (await tracker.latest(shellId))?.running === false)
+  })
+
+  it('waits for a pattern to appear, and gives up when it does not', async () => {
+    answer = 'approve'
+    void client.callTool('run_in_shell', { shell: 'shell', command: 'echo waited-for-this' })
+    const hit = await client.callTool('wait_for_output', { shell: 'shell', pattern: 'waited-for-\\w+', timeout_s: 10 })
+    expect(hit.isError).toBe(false)
+    expect(hit.text).toContain('waited-for-this')
+
+    const missed = await client.callTool('wait_for_output', { shell: 'shell', pattern: 'never-ever', timeout_s: 1 })
+    expect(missed.isError).toBe(true)
+    expect(missed.text).toMatch(/nothing matched/)
+  })
+
+  it('refuses a pattern that could hang the app', async () => {
+    const result = await client.callTool('wait_for_output', { shell: 'shell', pattern: 'x'.repeat(201) })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/too long/)
+  })
+
+  it('records what was asked for and what happened, with secrets masked', async () => {
+    answer = 'deny'
+    await client.callTool('run_in_shell', { shell: 'shell', command: 'echo "TOKEN=supersecretvalue"' })
+    const entries: AuditEntry[] = audit.list()
+    const last = entries.at(-1)!
+    expect(last).toMatchObject({ sessionId: 'mcp-claude', shellId, tool: 'run_in_shell', outcome: 'denied' })
+    expect(last.detail).toContain('TOKEN=[masked]')
+    expect(last.detail).not.toContain('supersecretvalue')
+    // Approvals and denials both land here, not just the refusals.
+    expect(entries.some((e) => e.outcome === 'approved')).toBe(true)
   })
 
   it('answers an unknown shell and an unknown tool as errors Claude can read', async () => {

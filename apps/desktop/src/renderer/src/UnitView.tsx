@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import type { CommandSummary, TerminalInfo } from '@shared/ipc'
+import type { ApprovalDecision, ApprovalRequest, CommandSummary, TerminalInfo } from '@shared/ipc'
+import { ApprovalCard } from './ApprovalCard'
 import { CommandStatus } from './CommandStatus'
 import { TerminalView } from './terminal/TerminalView'
 import { isPair, type Unit } from './tabs-model'
@@ -9,8 +10,11 @@ interface Props {
   visible: boolean
   /** Latest command per terminal id. */
   latest: Record<string, CommandSummary>
+  /** Cards Claude is waiting on, by the shell they target. */
+  approvals: Record<string, ApprovalRequest>
   onFocus(id: string): void
   onSend(unit: Unit): void
+  onDecide(id: string, decision: ApprovalDecision): void
 }
 
 const MIN_RATIO = 0.2
@@ -36,7 +40,7 @@ function saveRatio(key: string, ratio: number): void {
 }
 
 /** A tab's content: one terminal, or Claude and its shell side by side. */
-export function UnitView({ unit, visible, latest, onFocus, onSend }: Props): React.JSX.Element {
+export function UnitView({ unit, visible, latest, approvals, onFocus, onSend, onDecide }: Props): React.JSX.Element {
   const [ratio, setRatio] = useState(() => readRatio(unit.key))
   const [dragging, setDragging] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -84,6 +88,8 @@ export function UnitView({ unit, visible, latest, onFocus, onSend }: Props): Rea
           focused={unit.focusId === m.id}
           onFocus={onFocus}
         />
+        {/* On the pane it would act on, so the command is read where it will run. */}
+        {approvals[m.id] && <ApprovalCard request={approvals[m.id]!} onDecide={onDecide} />}
       </div>
     </section>
   )

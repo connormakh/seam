@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  type ApprovalRequest,
+  type AuditEntry,
   type CommandsChangedEvent,
   type MenuCommand,
   type SeamApi,
@@ -25,6 +27,21 @@ ipcRenderer.on(IPC.menuCommand, (_e, command: MenuCommand) => {
   for (const fn of menuListeners) fn(command)
 })
 
+const approvalAskedListeners = new Set<(request: ApprovalRequest) => void>()
+ipcRenderer.on(IPC.approvalAsked, (_e, request: ApprovalRequest) => {
+  for (const l of approvalAskedListeners) l(request)
+})
+
+const approvalDoneListeners = new Set<(event: { id: string }) => void>()
+ipcRenderer.on(IPC.approvalDone, (_e, event: { id: string }) => {
+  for (const l of approvalDoneListeners) l(event)
+})
+
+const auditListeners = new Set<(entry: AuditEntry) => void>()
+ipcRenderer.on(IPC.auditAppended, (_e, entry: AuditEntry) => {
+  for (const l of auditListeners) l(entry)
+})
+
 const commandListeners = new Set<(event: CommandsChangedEvent) => void>()
 ipcRenderer.on(IPC.commandsChanged, (_e, event: CommandsChangedEvent) => {
   for (const fn of commandListeners) fn(event)
@@ -41,6 +58,25 @@ const api: SeamApi = {
     }
   },
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
+  approvals: {
+    open: () => ipcRenderer.invoke(IPC.approvalsOpen),
+    resolve: (id, decision) => ipcRenderer.send(IPC.approvalsResolve, id, decision),
+    onAsked: (listener) => {
+      approvalAskedListeners.add(listener)
+      return () => approvalAskedListeners.delete(listener)
+    },
+    onDone: (listener) => {
+      approvalDoneListeners.add(listener)
+      return () => approvalDoneListeners.delete(listener)
+    }
+  },
+  audit: {
+    list: () => ipcRenderer.invoke(IPC.auditList),
+    onAppended: (listener) => {
+      auditListeners.add(listener)
+      return () => auditListeners.delete(listener)
+    }
+  },
   onMenuCommand: (listener) => {
     menuListeners.add(listener)
     return () => menuListeners.delete(listener)

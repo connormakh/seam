@@ -5,7 +5,10 @@ import { IPC } from '@shared/ipc'
 import { tmpdir } from 'node:os'
 import { ContextSender } from './context/send'
 import { ControlServer } from './control/server'
+import { Approvals } from './mcp/approvals'
+import { AuditLog } from './mcp/audit'
 import { installMcpServer, writeMcpConfig } from './mcp/install'
+import { DEFAULT_POLICY } from './mcp/policy'
 import { Tools } from './mcp/tools'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
@@ -36,6 +39,10 @@ export interface Runtime {
   context: ContextSender | null
   /** Claude to shell: the socket its MCP server calls in on; null without tmux. */
   control: ControlServer | null
+  /** Cards waiting on the user before Claude may touch a shell; null without tmux. */
+  approvals: Approvals | null
+  /** What Claude asked for and what happened; null without tmux. */
+  audit: AuditLog | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -48,7 +55,17 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     path: process.env['PATH']
   })
   if (!binary)
-    return { tmux: null, eventsDir: null, commands: null, context: null, control: null, tmuxVersion: null, terminals: null }
+    return {
+      tmux: null,
+      eventsDir: null,
+      commands: null,
+      context: null,
+      control: null,
+      approvals: null,
+      audit: null,
+      tmuxVersion: null,
+      terminals: null
+    }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
   mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
@@ -73,7 +90,17 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmuxVersion = await tmux.version()
     await tmux.reloadConfig()
   } catch {
-    return { tmux: null, eventsDir: null, commands: null, context: null, control: null, tmuxVersion: null, terminals: null }
+    return {
+      tmux: null,
+      eventsDir: null,
+      commands: null,
+      context: null,
+      control: null,
+      approvals: null,
+      audit: null,
+      tmuxVersion: null,
+      terminals: null
+    }
   }
 
   // Belt and braces for the postinstall fix; a no-op once it has run.
@@ -105,7 +132,20 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
 
   // Claude to shell. The tools read tmux and the command records; the control
   // server is the only way in, and a token is the only way to be heard.
-  const tools = new Tools({ tmux, commands, homeDir: o.homeDir })
+  const audit = new AuditLog({ onAppend: (entry) => o.send(IPC.auditAppended, entry) })
+  const approvals = new Approvals({
+    present: (request) => o.send(IPC.approvalAsked, request),
+    dismiss: (id) => o.send(IPC.approvalDone, { id })
+  })
+  const tools = new Tools({
+    tmux,
+    commands,
+    homeDir: o.homeDir,
+    approvals,
+    audit,
+    // One setting until workspaces exist; the design doc puts it per workspace.
+    policy: () => DEFAULT_POLICY
+  })
   const control = new ControlServer({
     socketPath: join(o.userDataDir, 'control.sock'),
     methods: {
@@ -130,21 +170,21 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     spawnPty: spawn,
     defaultCwd: o.homeDir,
     claudeLaunch: (sessionId, root) => {
-      const override = claudeOverride()
-      if (override) return { command: override }
       // The token is this session's alone and dies with it, so a transcript
       // that leaks one cannot be replayed into a session still running.
       const token = control.issueToken({ sessionId, root })
+      const env = { SEAM_SOCKET: control.socketPath, SEAM_SESSION_TOKEN: token }
+      // A stand-in Claude still gets the socket and a token, so the whole
+      // Claude-to-shell path can be driven in dev without the real binary.
+      const override = claudeOverride()
+      if (override) return { command: override, env }
       const configPath = writeMcpConfig({
         dir: claudeDir,
         sessionId,
         serverPath: mcpServerPath,
         nodePath: process.execPath
       })
-      return {
-        command: claudeCommand(shell, ['--mcp-config', configPath]),
-        env: { SEAM_SOCKET: control.socketPath, SEAM_SESSION_TOKEN: token }
-      }
+      return { command: claudeCommand(shell, ['--mcp-config', configPath]), env }
     },
     shellLaunch: (id) =>
       shellLaunch({
@@ -160,15 +200,18 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       exit: (event) => {
         if (event.ended) {
           commands.forget(event.id)
-          // Whatever still holds this session's token stops being anyone.
+          // Whatever still holds this session's token stops being anyone, and
+          // a card nobody can answer for stops waiting.
           control.revokeSession(event.id)
+          approvals.cancelSession(event.id)
+          tools.forgetSession(event.id)
         }
         o.send(IPC.terminalExit, event)
       }
     }
   })
 
-  return { tmux, eventsDir, commands, context, control, tmuxVersion, terminals }
+  return { tmux, eventsDir, commands, context, control, approvals, audit, tmuxVersion, terminals }
 }
 
 /**
