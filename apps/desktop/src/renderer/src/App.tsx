@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { AppInfo } from '@shared/ipc'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
-import { initialTabs, nextShellTitle, tabsReducer } from './tabs-model'
+import { initialTabs, isPair, nextShellTitle, tabsReducer } from './tabs-model'
 import { UnitView } from './UnitView'
 
 const api = (): typeof window.seam.terminals => window.seam.terminals
@@ -54,8 +54,9 @@ export function App(): React.JSX.Element {
 
   const newShell = useCallback(async () => {
     const m = modelRef.current
+    // Only standalone shells compete for "shell N"; a pair's shell is named by its pair.
     const title = nextShellTitle([
-      ...[...m.tabs, ...m.background].flatMap((u) => u.members.map((t) => t.title)),
+      ...[...m.tabs, ...m.background].filter((u) => !isPair(u)).flatMap((u) => u.members.map((t) => t.title)),
       ...reservedTitles.current
     ])
     reservedTitles.current.add(title)

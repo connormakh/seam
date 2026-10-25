@@ -10,19 +10,24 @@ You can always do the work yourself or hand it to Claude; switching between the 
 
 ## Status
 
-**M0, terminal skeleton: done.**
+**M0, terminal skeleton: done. Paired workspaces: in.**
 
+- **Pairs:** Cmd+T picks a project folder and opens Claude Code on the left with a shell on the right, both in that folder, split by a draggable divider. Ctrl+` hops between them.
 - Terminal tabs rendered with xterm.js, each backed by a session on Seam's private tmux server.
 - Closing a tab keeps the terminal running in the background; quitting the app keeps everything running.
 - Relaunching restores the tabs that were open, screens intact. Background terminals can be reopened or ended from the titlebar menu.
+
+The Claude pane runs `claude` through your login shell, so it is found wherever you installed it. If it is missing, the pane says so; when Claude Code exits, the pane becomes a shell.
 
 Next: M1, the Claude Code session browser.
 
 | Shortcut | Action |
 | --- | --- |
-| ⌘T | New shell |
-| ⌘W | Close tab (terminal keeps running) |
-| ⌘⇧W | End the terminal |
+| ⌘T | New Claude + shell pair (pick a folder) |
+| ⌘⇧T | New shell |
+| ⌃` | Switch focus between Claude and the shell |
+| ⌘W | Close tab (its terminals keep running) |
+| ⌘⇧W | End the tab and its terminals |
 | ⌘1 to ⌘9 | Switch tabs |
 
 Shortcuts are defined in the application menu, so they also appear under File and Window.

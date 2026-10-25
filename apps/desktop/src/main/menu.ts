@@ -41,7 +41,18 @@ export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev
     {
       label: 'File',
       submenu: [
-        { id: 'new-shell', label: 'New Shell', accelerator: key('T'), click: () => send({ type: 'new-shell' }) },
+        {
+          id: 'new-pair',
+          label: 'New Claude + Shell Pair…',
+          accelerator: key('T'),
+          click: () => send({ type: 'new-pair' })
+        },
+        {
+          id: 'new-shell',
+          label: 'New Shell',
+          accelerator: mac ? 'Cmd+Shift+T' : 'Ctrl+Shift+Alt+T',
+          click: () => send({ type: 'new-shell' })
+        },
         { type: 'separator' },
         {
           id: 'close-tab',
@@ -51,7 +62,7 @@ export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev
         },
         {
           id: 'end-terminal',
-          label: 'End Terminal',
+          label: 'End Tab and Its Terminals',
           accelerator: mac ? 'Cmd+Shift+W' : 'Ctrl+Shift+Alt+W',
           click: () => send({ type: 'end-terminal' })
         },
@@ -84,6 +95,14 @@ export function installMenu(getWindow: () => BrowserWindow | null, opts: { isDev
       label: 'Window',
       // Built by hand: the stock window menu also binds Cmd+W to close the window.
       submenu: [
+        {
+          id: 'toggle-focus',
+          // Ctrl+` on every platform: one key to hop between Claude and the shell.
+          label: 'Switch Between Claude and Shell',
+          accelerator: 'Ctrl+`',
+          click: () => send({ type: 'toggle-focus' })
+        },
+        { type: 'separator' },
         { role: 'minimize' },
         { role: 'zoom' },
         { type: 'separator' },
