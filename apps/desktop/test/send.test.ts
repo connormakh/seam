@@ -3,10 +3,26 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ContextSender } from '../src/main/context/send'
+import { claudeCommand } from '../src/main/terminals/claude-command'
 import { CommandTracker } from '../src/main/shell/command-tracker'
 import { installShellIntegration, shellLaunch } from '../src/main/shell/integration'
 import type { Tmux } from '../src/main/tmux/tmux'
 import { makeTestTmux, waitFor } from './helpers'
+
+/** What send.ts treats as a bare prompt rather than Claude Code. */
+const SHELL_COMMANDS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'login'])
+
+/**
+ * The Claude side exactly as the app starts it, with `bin` as the only place
+ * a `claude` could come from. /bin/sh and not a login shell, because -l would
+ * rebuild PATH from the profile; `env` and not the session environment,
+ * because tmux hands the pane the server's PATH whatever it is told.
+ */
+const withPath = (bin: string): string[] => [
+  '/usr/bin/env',
+  `PATH=${bin}:/usr/bin:/bin`,
+  ...claudeCommand('/bin/sh').filter((a) => a !== '-l')
+]
 
 describe('ContextSender (real bash + a fake Claude in tmux)', () => {
   let tmux: Tmux
@@ -14,6 +30,8 @@ describe('ContextSender (real bash + a fake Claude in tmux)', () => {
   let tracker: CommandTracker
   let sender: ContextSender
   let received: string
+  let ready: string
+  let bin: string
   const shellId = 'pair-shell'
   const claudeId = 'pair-claude'
 
@@ -25,26 +43,36 @@ describe('ContextSender (real bash + a fake Claude in tmux)', () => {
     mkdirSync(eventsDir)
     writeFileSync(join(home, '.bash_profile'), 'PS1="$ "\n')
     received = join(dir, 'claude-received.txt')
+    ready = join(dir, 'claude-ready')
     tracker = new CommandTracker({ tmux, eventsDir, onChange: () => {} })
     sender = new ContextSender({ tmux, commands: tracker, homeDir: home, contextDir: join(dir, 'ctx') })
 
     // Stand-in for Claude Code: a non-shell program that turns on bracketed
-    // paste and records what it is given.
-    const fakeClaude = join(dir, 'fake-claude.py')
+    // paste and records what it is given. It is named `claude` on a PATH of
+    // its own, because the pair starts it through claudeCommand, the way the
+    // app does, and that is what decides the pane's foreground command.
+    bin = join(dir, 'bin')
+    mkdirSync(bin)
     writeFileSync(
-      fakeClaude,
+      join(bin, 'claude'),
       [
+        '#!/usr/bin/env python3',
         'import sys, os, tty',
         'sys.stdout.write("\\x1b[?2004h"); sys.stdout.flush()',
         'tty.setraw(0)',
         `out = open(${JSON.stringify(received)}, "ab", buffering=0)`,
+        // Only now is a paste safe: tty.setraw flushes whatever has not been
+        // read yet, so anything sent before this line is thrown away.
+        `open(${JSON.stringify(ready)}, "w").close()`,
         'while True:',
         '    b = os.read(0, 4096)',
         '    if not b: break',
         '    out.write(b)'
-      ].join('\n')
+      ].join('\n'),
+      { mode: 0o755 }
     )
-    await tmux.newSession({ id: claudeId, kind: 'claude', cwd: home, command: ['python3', fakeClaude], pairId: shellId })
+    await tmux.newSession({ id: claudeId, kind: 'claude', cwd: home, command: withPath(bin), pairId: shellId })
+    await waitFor(async () => existsSync(ready))
 
     const launch = shellLaunch({
       shell: execFileSync('which', ['bash'], { encoding: 'utf8' }).trim(),
@@ -66,6 +94,14 @@ describe('ContextSender (real bash + a fake Claude in tmux)', () => {
     await tmux.sendKeys(shellId, cmd, { literal: true, enter: true })
     await waitFor(async () => (await tracker.list(shellId)).filter((r) => r.endedAt && r.output !== null).length >= n)
   }
+
+  it('leaves Claude, not the shell that starts it, as the pane foreground command', async () => {
+    // claudeCommand runs claude from /bin/sh. Without job control that shell
+    // leads the foreground process group, tmux reports it as the pane's
+    // command, and send.ts refuses every paste as "Claude Code is not running".
+    const claude = (await tmux.listSessions()).find((x) => x.id === claudeId)
+    expect(SHELL_COMMANDS.has(claude?.currentCommand ?? '')).toBe(false)
+  })
 
   it('refuses when the shell has not finished a command yet', async () => {
     await expect(sender.sendLast(shellId, claudeId)).rejects.toThrow(/no command has finished/)
@@ -108,8 +144,14 @@ describe('ContextSender (real bash + a fake Claude in tmux)', () => {
   })
 
   it('refuses to paste once Claude has exited to a shell prompt', async () => {
-    await tmux.newSession({ id: 'gone-claude', kind: 'claude', cwd: dir, command: ['bash', '--norc'], pairId: 'gone-shell' })
+    // Same launch as the pair above, but with nothing named claude on PATH:
+    // the pane says so and falls back to a shell, which must not be pasted into.
+    const empty = join(dir, 'empty-bin')
+    mkdirSync(empty, { recursive: true })
+    await tmux.newSession({ id: 'gone-claude', kind: 'claude', cwd: dir, command: withPath(empty), pairId: 'gone-shell' })
     await tmux.newSession({ id: 'gone-shell', kind: 'shell', cwd: dir, command: ['bash', '--norc'], pairId: 'gone-claude' })
+    await waitFor(async () => (await tmux.capturePane('gone-claude')).includes('is not on your PATH'))
+    await waitFor(async () => SHELL_COMMANDS.has((await tmux.listSessions()).find((x) => x.id === 'gone-claude')?.currentCommand ?? ''))
     await expect(sender.sendLast('gone-shell', 'gone-claude')).rejects.toThrow(/Claude Code is not running/)
   })
 })

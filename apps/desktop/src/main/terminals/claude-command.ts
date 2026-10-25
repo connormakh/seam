@@ -22,6 +22,13 @@ export function userShell(): string {
  * logic itself runs in /bin/sh so it works whatever the login shell is
  * (zsh, bash or fish). When Claude Code exits, or is not installed, the
  * pane drops into a normal shell instead of disappearing.
+ *
+ * `set -m` matters more than it looks. Without job control, /bin/sh runs
+ * claude in the shell's own process group, so the pane's foreground process
+ * group leader is /bin/sh and tmux reports `pane_current_command` as the
+ * shell. Seam reads that to tell a running Claude from a bare prompt it must
+ * not paste into, so every send was refused. With it, claude leads its own
+ * foreground group, exactly as if the user had typed `claude` at a prompt.
  */
 export function claudeCommand(shell: string = userShell(), claudeArgs: string[] = []): string[] {
   if (!/^\/[\w./+-]+$/.test(shell)) throw new Error(`unexpected shell path: ${shell}`)
@@ -31,6 +38,7 @@ export function claudeCommand(shell: string = userShell(), claudeArgs: string[] 
   const args = claudeArgs.length ? ` ${claudeArgs.join(' ')}` : ''
   // Inside single quotes for the login shell, so only double quotes here.
   const script = [
+    'set -m;',
     'if command -v claude >/dev/null 2>&1; then',
     `  claude${args};`,
     'else',
