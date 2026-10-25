@@ -8,6 +8,7 @@ import type {
   TerminalInfo,
   TerminalSize
 } from '@shared/ipc'
+import type { ShellLaunch } from '../shell/integration'
 import type { Tmux, TmuxSession } from '../tmux/tmux'
 import { newTerminalId } from './ids'
 import { OutputBatcher } from './output-batcher'
@@ -26,6 +27,8 @@ export interface TerminalServiceOptions {
   defaultCwd: string
   /** argv that starts Claude Code for the Claude side of a pair. */
   claudeCommand: () => string[]
+  /** How to start an integrated shell for a terminal; tmux's default shell when absent. */
+  shellLaunch?: (terminalId: string) => ShellLaunch
 }
 
 interface Attachment {
@@ -68,12 +71,14 @@ export class TerminalService {
   async create(opts: CreateTerminalOptions = {}): Promise<TerminalInfo> {
     const id = newTerminalId()
     const kind = opts.kind ?? 'shell'
+    const launch = kind === 'shell' ? this.o.shellLaunch?.(id) : undefined
     await this.o.tmux.newSession({
       id,
       kind,
       cwd: opts.cwd ?? this.o.defaultCwd,
       title: opts.title ?? (kind === 'shell' ? 'shell' : 'claude'),
-      env: { SEAM_TERMINAL_ID: id }
+      ...(launch ? { command: launch.command } : {}),
+      env: { ...launch?.env, SEAM_TERMINAL_ID: id }
     })
     const info = (await this.list()).find((t) => t.id === id)
     if (!info) throw new Error(`terminal ${id} exited immediately after starting`)
@@ -100,12 +105,14 @@ export class TerminalService {
       pairId: shellId
     })
     try {
+      const launch = this.o.shellLaunch?.(shellId)
       await this.o.tmux.newSession({
         id: shellId,
         kind: 'shell',
         cwd: opts.cwd,
         title: 'shell',
-        env: env(shellId, claudeId),
+        ...(launch ? { command: launch.command } : {}),
+        env: { ...launch?.env, ...env(shellId, claudeId) },
         pairId: claudeId
       })
     } catch (err) {

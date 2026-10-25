@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
-import { claudeCommand } from './terminals/claude-command'
+import { installShellIntegration, shellLaunch } from './shell/integration'
+import { claudeCommand, userShell } from './terminals/claude-command'
 import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
 import { TerminalService } from './terminals/terminal-service'
 import { resolveTmuxBinary } from './tmux/binary'
@@ -21,6 +22,8 @@ export interface RuntimeOptions {
 /** Everything the main process wires together at startup. */
 export interface Runtime {
   tmux: Tmux | null
+  /** Where integrated shells append their command reports; null without tmux. */
+  eventsDir: string | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -32,7 +35,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     bundledDir: o.isPackaged ? join(o.resourcesDir, 'bin') : undefined,
     path: process.env['PATH']
   })
-  if (!binary) return { tmux: null, tmuxVersion: null, terminals: null }
+  if (!binary) return { tmux: null, eventsDir: null, tmuxVersion: null, terminals: null }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
   mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
@@ -57,7 +60,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmuxVersion = await tmux.version()
     await tmux.reloadConfig()
   } catch {
-    return { tmux: null, tmuxVersion: null, terminals: null }
+    return { tmux: null, eventsDir: null, tmuxVersion: null, terminals: null }
   }
 
   // Belt and braces for the postinstall fix; a no-op once it has run.
@@ -67,16 +70,31 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     // node-pty resolved from an unusual location; spawning will report it.
   }
 
+  // Shells report their commands through files in eventsDir (see shell/integration.ts).
+  const integrationDir = installShellIntegration(join(o.userDataDir, 'shell-integration'))
+  const eventsDir = join(o.userDataDir, 'events')
+  mkdirSync(eventsDir, { recursive: true, mode: 0o700 })
+  const shell = userShell()
+
   const terminals = new TerminalService({
     tmux,
     spawnPty: spawn,
     defaultCwd: o.homeDir,
-    claudeCommand: () => claudeCommand(),
+    claudeCommand: () => claudeCommand(shell),
+    shellLaunch: (id) =>
+      shellLaunch({
+        shell,
+        integrationDir,
+        eventsFile: join(eventsDir, `${id}.events`),
+        tmuxBinary: binary,
+        homeDir: o.homeDir,
+        userZdotdir: process.env['ZDOTDIR']
+      }),
     events: {
       data: (id, data) => o.send(IPC.terminalData, { id, data }),
       exit: (event) => o.send(IPC.terminalExit, event)
     }
   })
 
-  return { tmux, tmuxVersion, terminals }
+  return { tmux, eventsDir, tmuxVersion, terminals }
 }
