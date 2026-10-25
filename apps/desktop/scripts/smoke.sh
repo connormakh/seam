@@ -13,7 +13,12 @@ extra=()
 if [[ "$(uname)" == "Linux" ]]; then
   runner=(xvfb-run -a)
   # Containers usually run as root, where Chromium's sandbox cannot start.
-  [[ "$(id -u)" == "0" ]] && extra=(--no-sandbox)
+  # An if, not &&: a false && is a non-zero status, which set -e would act on.
+  if [[ "$(id -u)" == "0" ]]; then extra=(--no-sandbox); fi
 fi
 
-SEAM_SMOKE_TEST="$script" "${runner[@]}" npx electron "${extra[@]}" . 2>/dev/null | grep '^SMOKE:' | sed 's/^SMOKE://'
+# ${a[@]+"${a[@]}"} and not "${a[@]}": with set -u, bash 3.2 (what macOS ships)
+# calls an empty array unbound. ELECTRON_RUN_AS_NODE is inherited from editors
+# that are themselves Electron apps, and makes electron run as plain node.
+env -u ELECTRON_RUN_AS_NODE SEAM_SMOKE_TEST="$script" ${runner[@]+"${runner[@]}"} \
+  npx electron ${extra[@]+"${extra[@]}"} . 2>/dev/null | grep '^SMOKE:' | sed 's/^SMOKE://'
