@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  type CommandsChangedEvent,
   type MenuCommand,
   type SeamApi,
   type TerminalDataEvent,
@@ -24,8 +25,20 @@ ipcRenderer.on(IPC.menuCommand, (_e, command: MenuCommand) => {
   for (const fn of menuListeners) fn(command)
 })
 
+const commandListeners = new Set<(event: CommandsChangedEvent) => void>()
+ipcRenderer.on(IPC.commandsChanged, (_e, event: CommandsChangedEvent) => {
+  for (const fn of commandListeners) fn(event)
+})
+
 const api: SeamApi = {
   appInfo: () => ipcRenderer.invoke(IPC.appInfo),
+  commands: {
+    latest: (terminalId) => ipcRenderer.invoke(IPC.commandsLatest, terminalId),
+    onChanged: (listener) => {
+      commandListeners.add(listener)
+      return () => commandListeners.delete(listener)
+    }
+  },
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   onMenuCommand: (listener) => {
     menuListeners.add(listener)

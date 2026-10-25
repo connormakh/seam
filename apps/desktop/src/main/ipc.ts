@@ -50,6 +50,8 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     tmux: rt.tmuxVersion
   }))
 
+  ipcMain.handle(IPC.commandsLatest, (_e, id: unknown) => rt.commands?.latest(asId(id)) ?? null)
+
   ipcMain.handle(IPC.terminalList, () => (rt.terminals ? rt.terminals.list() : []))
   ipcMain.handle(IPC.terminalCreate, (_e, opts: unknown) => requireTerminals(rt).create(asCreateOptions(opts)))
   ipcMain.handle(IPC.terminalCreatePair, (_e, opts: unknown) =>
@@ -59,7 +61,12 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     requireTerminals(rt).attach(asId(id), asSize(size))
   )
   ipcMain.handle(IPC.terminalDetach, (_e, id: unknown) => requireTerminals(rt).detach(asId(id)))
-  ipcMain.handle(IPC.terminalKill, (_e, id: unknown) => requireTerminals(rt).kill(asId(id)))
+  ipcMain.handle(IPC.terminalKill, async (_e, id: unknown) => {
+    const terminalId = asId(id)
+    await requireTerminals(rt).kill(terminalId)
+    // A terminal without a tab has no client to report its exit; forget it here too.
+    rt.commands?.forget(terminalId)
+  })
   ipcMain.handle(IPC.terminalSetOpen, (_e, id: unknown, open: unknown) =>
     requireTerminals(rt).setOpen(asId(id), open === true)
   )

@@ -22,7 +22,10 @@ export const IPC = {
   /** main -> renderer events */
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
-  menuCommand: 'menu:command'
+  menuCommand: 'menu:command',
+  commandsLatest: 'commands:latest',
+  /** main -> renderer: a terminal's latest command started or finished */
+  commandsChanged: 'commands:changed'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -59,6 +62,20 @@ export interface TerminalInfo {
   open: boolean
   /** The other half of a Claude + shell pair, or null for a standalone terminal. */
   pairId: string | null
+}
+
+/** A command run in a Seam shell, without its output. */
+export interface CommandSummary {
+  id: number
+  terminalId: string
+  command: string
+  cwd: string
+  startedAt: number
+  endedAt: number | null
+  exitCode: number | null
+  running: boolean
+  /** Lines of output, once captured; null while running or if unreadable. */
+  outputLines: number | null
 }
 
 export interface CreatePairOptions {
@@ -114,8 +131,20 @@ export interface TerminalApi {
   onExit(listener: (event: TerminalExitEvent) => void): () => void
 }
 
+export interface CommandsChangedEvent {
+  terminalId: string
+  latest: CommandSummary
+}
+
+export interface CommandsApi {
+  /** The latest command in a terminal, running or finished. */
+  latest(terminalId: string): Promise<CommandSummary | null>
+  onChanged(listener: (event: CommandsChangedEvent) => void): () => void
+}
+
 export interface SeamApi {
   appInfo(): Promise<AppInfo>
+  commands: CommandsApi
   /** Native folder picker. Resolves null when cancelled. */
   pickFolder(): Promise<string | null>
   terminals: TerminalApi

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
 import { IPC } from '@shared/ipc'
+import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
 import { claudeCommand, userShell } from './terminals/claude-command'
 import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
@@ -24,6 +25,8 @@ export interface Runtime {
   tmux: Tmux | null
   /** Where integrated shells append their command reports; null without tmux. */
   eventsDir: string | null
+  /** Commands run in Seam shells, with their output; null without tmux. */
+  commands: CommandTracker | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -35,7 +38,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     bundledDir: o.isPackaged ? join(o.resourcesDir, 'bin') : undefined,
     path: process.env['PATH']
   })
-  if (!binary) return { tmux: null, eventsDir: null, tmuxVersion: null, terminals: null }
+  if (!binary) return { tmux: null, eventsDir: null, commands: null, tmuxVersion: null, terminals: null }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
   mkdirSync(tmuxDir, { recursive: true, mode: 0o700 })
@@ -60,7 +63,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     tmuxVersion = await tmux.version()
     await tmux.reloadConfig()
   } catch {
-    return { tmux: null, eventsDir: null, tmuxVersion: null, terminals: null }
+    return { tmux: null, eventsDir: null, commands: null, tmuxVersion: null, terminals: null }
   }
 
   // Belt and braces for the postinstall fix; a no-op once it has run.
@@ -75,6 +78,13 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   const eventsDir = join(o.userDataDir, 'events')
   mkdirSync(eventsDir, { recursive: true, mode: 0o700 })
   const shell = userShell()
+
+  const commands = new CommandTracker({
+    tmux,
+    eventsDir,
+    onChange: (terminalId, latest) => o.send(IPC.commandsChanged, { terminalId, latest })
+  })
+  commands.start()
 
   const terminals = new TerminalService({
     tmux,
@@ -92,9 +102,12 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       }),
     events: {
       data: (id, data) => o.send(IPC.terminalData, { id, data }),
-      exit: (event) => o.send(IPC.terminalExit, event)
+      exit: (event) => {
+        if (event.ended) commands.forget(event.id)
+        o.send(IPC.terminalExit, event)
+      }
     }
   })
 
-  return { tmux, eventsDir, tmuxVersion, terminals }
+  return { tmux, eventsDir, commands, tmuxVersion, terminals }
 }
