@@ -89,6 +89,12 @@ export function installMenu(
           click: () => send({ type: 'send-last' })
         },
         {
+          id: 'attach-last',
+          label: 'Attach Last Command to Next Prompt',
+          accelerator: mac ? 'Cmd+Alt+Enter' : 'Ctrl+Alt+Enter',
+          click: () => send({ type: 'attach-last' })
+        },
+        {
           id: 'toggle-activity',
           label: 'Activity',
           accelerator: key('A', 'Shift+'),

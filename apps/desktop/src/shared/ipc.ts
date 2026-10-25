@@ -34,7 +34,15 @@ export const IPC = {
   approvalAsked: 'approvals:asked',
   approvalDone: 'approvals:done',
   auditAppended: 'audit:appended',
-  auditList: 'audit:list'
+  auditList: 'audit:list',
+  /** Hooks: what each Claude session is doing, and what is queued for it */
+  sessionStatuses: 'session:statuses',
+  sessionStatusChanged: 'session:status-changed',
+  contextAttachLast: 'context:attach-last',
+  attachQueueChanged: 'attach:changed',
+  attachClear: 'attach:clear',
+  autoSyncSet: 'autosync:set',
+  autoSyncGet: 'autosync:get'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -43,6 +51,7 @@ export type MenuCommand =
   | { type: 'new-shell' }
   | { type: 'toggle-focus' }
   | { type: 'send-last' }
+  | { type: 'attach-last' }
   | { type: 'toggle-activity' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
@@ -73,6 +82,24 @@ export interface TerminalInfo {
   open: boolean
   /** The other half of a Claude + shell pair, or null for a standalone terminal. */
   pairId: string | null
+}
+
+/**
+ * What a Claude session is doing, from its hooks.
+ *
+ * `waiting` is the one that matters: it means Claude has asked the user
+ * something and nothing moves until they look.
+ */
+export type SessionState = 'working' | 'waiting' | 'idle'
+
+export interface SessionStatus {
+  sessionId: string
+  state: SessionState
+  /** The start of Claude's last message, for a tab that is not in front. */
+  preview: string | null
+  /** True once a turn has finished that the user has not looked at. */
+  unseen: boolean
+  changedAt: number
 }
 
 /** What Claude wants to do in a shell, waiting on the user's answer. */
@@ -208,6 +235,19 @@ export interface SeamApi {
     resolve: (id: string, decision: ApprovalDecision) => void
     onAsked: (listener: (request: ApprovalRequest) => void) => () => void
     onDone: (listener: (event: { id: string }) => void) => () => void
+  }
+  sessions: {
+    statuses: () => Promise<SessionStatus[]>
+    onStatus: (listener: (status: SessionStatus) => void) => () => void
+  }
+  attach: {
+    last: (shellId: string, claudeId: string) => Promise<SendContextResult>
+    clear: (sessionId: string) => void
+    onChanged: (listener: (event: { sessionId: string; queued: number }) => void) => () => void
+  }
+  autoSync: {
+    get: (sessionId: string) => Promise<boolean>
+    set: (sessionId: string, on: boolean) => void
   }
   audit: {
     list: () => Promise<AuditEntry[]>

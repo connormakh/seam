@@ -1,5 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { IPC, type AppInfo, type ApprovalDecision, type ApprovalRequest, type AuditEntry } from '@shared/ipc'
+import {
+  IPC,
+  type AppInfo,
+  type ApprovalDecision,
+  type ApprovalRequest,
+  type AuditEntry,
+  type SendContextResult,
+  type SessionStatus
+} from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
 import type { Runtime } from './runtime'
 import { asCreateOptions, asCreatePairOptions, asId, asSize } from './validate'
@@ -26,6 +34,29 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
   // card lives in main: it must outlive the view it is drawn on.
   ipcMain.handle(IPC.approvalsOpen, async (): Promise<ApprovalRequest[]> => rt.approvals?.open() ?? [])
   ipcMain.handle(IPC.auditList, async (): Promise<AuditEntry[]> => rt.audit?.list() ?? [])
+  ipcMain.handle(IPC.sessionStatuses, async (): Promise<SessionStatus[]> => rt.hooks?.statusList() ?? [])
+  ipcMain.handle(IPC.autoSyncGet, async (_e, id: unknown): Promise<boolean> =>
+    typeof id === 'string' ? (rt.autoSync?.enabled(id) ?? false) : false
+  )
+  ipcMain.on(IPC.autoSyncSet, (_e, id: unknown, on: unknown) =>
+    quietly(() => {
+      if (typeof id === 'string' && typeof on === 'boolean') rt.autoSync?.setEnabled(id, on)
+    })
+  )
+  ipcMain.on(IPC.attachClear, (_e, id: unknown) =>
+    quietly(() => {
+      if (typeof id === 'string') rt.hooks?.clearAttached(id)
+    })
+  )
+  // Attach mode: hold the shell's last command for Claude's next prompt
+  // rather than typing it in, which also works while Claude is mid-turn.
+  ipcMain.handle(IPC.contextAttachLast, async (_e, shellId: unknown, claudeId: unknown): Promise<SendContextResult> => {
+    if (!rt.context || !rt.hooks) throw new Error('tmux is not installed')
+    const result = await rt.context.attachLast(asId(shellId), asId(claudeId))
+    rt.hooks.attach(asId(claudeId), result.text)
+    const { text: _text, ...summary } = result
+    return summary
+  })
   ipcMain.on(IPC.approvalsResolve, (_e, id: unknown, decision: unknown) =>
     quietly(() => {
       if (typeof id !== 'string') return

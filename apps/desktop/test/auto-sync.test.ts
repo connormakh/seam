@@ -115,16 +115,28 @@ describe('auto sync (real hook, real socket, real bash)', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('writes a settings file Claude Code can load, with both context events', () => {
+  it('writes a settings file Claude Code can load, blocking only where context comes back', () => {
     const file = writeHookSettings({ dir: join(dir, 'claude'), sessionId: 'claude-1', hookPath })
     const settings = JSON.parse(readFileSync(file, 'utf8')) as {
       hooks: Record<string, { hooks: { command: string; async: boolean }[] }[]>
     }
-    expect(Object.keys(settings.hooks).sort()).toEqual(['PostToolUse', 'UserPromptSubmit'])
-    for (const event of Object.values(settings.hooks)) {
+    expect(Object.keys(settings.hooks).sort()).toEqual([
+      'Notification',
+      'PermissionRequest',
+      'PostToolUse',
+      'SessionEnd',
+      'SessionStart',
+      'Stop',
+      'UserPromptSubmit'
+    ])
+    for (const [name, event] of Object.entries(settings.hooks)) {
       // Quoted: Claude Code runs this through a shell, and the real path is
       // under "Application Support", which unquoted is two words.
-      expect(event[0]!.hooks[0]).toMatchObject({ command: `'${hookPath}'`, async: false })
+      expect(event[0]!.hooks[0]!.command).toBe(`'${hookPath}'`)
+      // Only the two that return context may hold the turn up; an async
+      // hook's output is never read, so those two must not be async.
+      const returnsContext = ['SessionStart', 'UserPromptSubmit', 'PostToolUse'].includes(name)
+      expect(event[0]!.hooks[0]!.async).toBe(!returnsContext)
     }
 
     // The quoting has to survive a path with a space in it, which is the

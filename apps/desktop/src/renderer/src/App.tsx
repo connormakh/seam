@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AppInfo, ApprovalDecision, ApprovalRequest, AuditEntry, CommandSummary } from '@shared/ipc'
+import type { AppInfo, ApprovalDecision, ApprovalRequest, AuditEntry, CommandSummary, SessionStatus } from '@shared/ipc'
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
@@ -22,6 +22,9 @@ export function App(): React.JSX.Element {
   const [approvals, setApprovals] = useState<Record<string, ApprovalRequest>>({})
   const [activity, setActivity] = useState<AuditEntry[]>([])
   const [activityOpen, setActivityOpen] = useState(false)
+  const [statuses, setStatuses] = useState<Record<string, SessionStatus>>({})
+  const [autoSyncOn, setAutoSyncOn] = useState(true)
+  const [attached, setAttached] = useState<Record<string, number>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
   const modelRef = useRef(model)
@@ -64,6 +67,24 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
+  // Status and the attach queue live in main, so a window that opens late
+  // still sees where every session got to.
+  useEffect(() => {
+    void window.seam.sessions.statuses().then((list) => {
+      setStatuses(Object.fromEntries(list.map((s) => [s.sessionId, s])))
+    })
+    const offStatus = window.seam.sessions.onStatus((status) =>
+      setStatuses((prev) => ({ ...prev, [status.sessionId]: status }))
+    )
+    const offAttach = window.seam.attach.onChanged(({ sessionId, queued }) =>
+      setAttached((prev) => ({ ...prev, [sessionId]: queued }))
+    )
+    return () => {
+      offStatus()
+      offAttach()
+    }
+  }, [])
+
   // The record outlives any one window, so load it and then follow it.
   useEffect(() => {
     void window.seam.audit.list().then(setActivity)
@@ -83,6 +104,25 @@ export function App(): React.JSX.Element {
   }, [notice])
 
   /** Shell to Claude: paste the shell's last command into Claude's prompt, then hand Claude the keyboard. */
+  /**
+   * Attach mode: hold the shell's last command for Claude's next prompt
+   * instead of typing it in. Nothing is pasted, so it works while Claude is
+   * mid-turn and does not depend on its input box accepting a paste.
+   */
+  const attachLast = useCallback(async (unit: Unit) => {
+    const claude = unit.members.find((m) => m.kind === 'claude')
+    const shell = unit.members.find((m) => m.kind === 'shell')
+    if (!claude || !shell) return
+    try {
+      const r = await window.seam.attach.last(shell.id, claude.id)
+      const cmd = r.command.length > 40 ? `${r.command.slice(0, 39)}…` : r.command
+      setNotice(`Attached “${cmd}”. It goes to Claude with your next prompt.`)
+      setError(null)
+    } catch (err) {
+      setError(remoteMessage(err))
+    }
+  }, [])
+
   const sendLast = useCallback(async (unit: Unit) => {
     const claude = unit.members.find((m) => m.kind === 'claude')
     const shell = unit.members.find((m) => m.kind === 'shell')
@@ -225,6 +265,11 @@ export function App(): React.JSX.Element {
           if (unit && isPair(unit)) void sendLast(unit)
           break
         }
+        case 'attach-last': {
+          const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
+          if (unit && isPair(unit)) void attachLast(unit)
+          break
+        }
       }
     })
   }, [closeTab, endUnit, newPair, newShell, sendLast])
@@ -232,6 +277,14 @@ export function App(): React.JSX.Element {
   const onFocus = useCallback((id: string) => dispatch({ type: 'focus', id }), [])
 
   const { tabs, background, activeKey, restored } = model
+
+  // The switch belongs to whichever pair is in front, so it follows the tab.
+  const focusedClaudeId =
+    tabs.find((u) => u.key === activeKey)?.members.find((m) => m.kind === 'claude')?.id ?? null
+  useEffect(() => {
+    if (!focusedClaudeId) return
+    void window.seam.autoSync.get(focusedClaudeId).then(setAutoSyncOn)
+  }, [focusedClaudeId])
   const tmuxMissing = info !== null && info.tmux === null
 
   return (
@@ -241,6 +294,7 @@ export function App(): React.JSX.Element {
         {tabs.length > 0 && (
           <TabBar
             tabs={tabs}
+            statuses={statuses}
             activeKey={activeKey}
             onSelect={(key) => dispatch({ type: 'activate', key })}
             onClose={closeTab}
@@ -265,7 +319,19 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      {activityOpen && <ActivityPanel entries={activity} onClose={() => setActivityOpen(false)} />}
+      {activityOpen && (
+        <ActivityPanel
+          entries={activity}
+          sessionId={focusedClaudeId}
+          autoSync={autoSyncOn}
+          onAutoSync={(on) => {
+            if (!focusedClaudeId) return
+            window.seam.autoSync.set(focusedClaudeId, on)
+            setAutoSyncOn(on)
+          }}
+          onClose={() => setActivityOpen(false)}
+        />
+      )}
 
       <main className="workspace">
         {tabs.map((u) => (
@@ -275,9 +341,11 @@ export function App(): React.JSX.Element {
             visible={u.key === activeKey}
             latest={latest}
             approvals={approvals}
+            attached={attached}
             onFocus={onFocus}
             onSend={(unit) => void sendLast(unit)}
             onDecide={decideApproval}
+            onClearAttached={(id) => window.seam.attach.clear(id)}
           />
         ))}
 

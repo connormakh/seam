@@ -706,3 +706,67 @@ code {
 .activity-row[data-outcome='approved'] .activity-outcome {
   color: var(--accent);
 }
+
+/* What a Claude session is doing, for the tab you are not looking at. */
+.tab-state {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-muted);
+}
+
+.tab-state[data-state='working'] {
+  background: var(--accent);
+  animation: tab-pulse 1.4s ease-in-out infinite;
+}
+
+/* Waiting is the one that needs the eye: nothing moves until you look. */
+.tab-state[data-state='waiting'] {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgb(239 107 115 / 22%);
+}
+
+.tab-state[data-state='idle'][data-unseen='1'] {
+  background: var(--text);
+}
+
+@keyframes tab-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-state[data-state='working'] {
+    animation: none;
+  }
+}
+
+/* How much is waiting to go to Claude with the next prompt. */
+.attach-chip {
+  padding: 1px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.attach-chip:hover {
+  background: var(--bg-hover);
+}
+
+.activity-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.activity-toggle input {
+  margin: 0;
+}

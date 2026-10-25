@@ -8,6 +8,7 @@ import { adoptRunningSessions } from './control/adopt'
 import { ControlServer } from './control/server'
 import { AutoSync } from './hooks/auto-sync'
 import { installHook, writeHookSettings } from './hooks/install'
+import { HookRouter } from './hooks/router'
 import { Approvals } from './mcp/approvals'
 import { AuditLog } from './mcp/audit'
 import { installMcpServer, writeMcpConfig } from './mcp/install'
@@ -48,6 +49,8 @@ export interface Runtime {
   audit: AuditLog | null
   /** Shell activity told to Claude without being asked; null without tmux. */
   autoSync: AutoSync | null
+  /** Session status and the attach queue, fed by hooks; null without tmux. */
+  hooks: HookRouter | null
   tmuxVersion: string | null
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
@@ -85,6 +88,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       approvals: null,
       audit: null,
       autoSync: null,
+      hooks: null,
       tmuxVersion: null,
       terminals: null,
       settings
@@ -122,6 +126,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       approvals: null,
       audit: null,
       autoSync: null,
+      hooks: null,
       tmuxVersion: null,
       terminals: null,
       settings
@@ -177,19 +182,22 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     homeDir: o.homeDir,
     contextDir: join(tmpdir(), 'seam-context')
   })
+  const hooks = new HookRouter({
+    autoSync,
+    shellNames: async (caller) =>
+      (await tmux.listSessions())
+        .filter((x) => x.kind === 'shell' && !x.private && x.root !== '' && x.root === caller.root)
+        .map((x) => x.title),
+    onStatus: (status) => o.send(IPC.sessionStatusChanged, status),
+    onAttachChanged: (sessionId, queued) => o.send(IPC.attachQueueChanged, { sessionId, queued })
+  })
   const control = new ControlServer({
     socketPath: join(o.userDataDir, 'control.sock'),
     methods: {
       'tools/list': async () => tools.list(),
       'tools/call': async (caller, params) =>
         tools.call(caller, String(params['name'] ?? ''), (params['arguments'] as Record<string, unknown>) ?? {}),
-      hook: async (caller, params) => {
-        const event = (params['event'] as Record<string, unknown>) ?? {}
-        // Subagents get their own events; their turns are not the pair's.
-        if (event['agent_id']) return {}
-        const additionalContext = await autoSync.digest(caller)
-        return additionalContext ? { additionalContext } : {}
-      }
+      hook: async (caller, params) => hooks.handle(caller, (params['event'] as Record<string, unknown>) ?? {})
     }
   })
   try {
@@ -261,13 +269,14 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
           approvals.cancelSession(event.id)
           tools.forgetSession(event.id)
           autoSync.forget(event.id)
+          hooks.forget(event.id)
         }
         o.send(IPC.terminalExit, event)
       }
     }
   })
 
-  return { tmux, eventsDir, commands, context, control, approvals, audit, autoSync, tmuxVersion, terminals, settings }
+  return { tmux, eventsDir, commands, context, control, approvals, audit, autoSync, hooks, tmuxVersion, terminals, settings }
 }
 
 /**

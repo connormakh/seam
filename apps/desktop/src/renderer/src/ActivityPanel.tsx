@@ -3,6 +3,10 @@ import type { AuditEntry } from '@shared/ipc'
 
 interface Props {
   entries: AuditEntry[]
+  /** The focused pair's Claude session, if there is one; null disables the switch. */
+  sessionId: string | null
+  autoSync: boolean
+  onAutoSync(on: boolean): void
   onClose(): void
 }
 
@@ -18,7 +22,7 @@ function clock(at: number): string {
  * question "what has it been doing in there" is answered. It reads bottom-up
  * like the terminals it describes: newest last, and it follows.
  */
-export function ActivityPanel({ entries, onClose }: Props): React.JSX.Element {
+export function ActivityPanel({ entries, sessionId, autoSync, onAutoSync, onClose }: Props): React.JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -41,6 +45,23 @@ export function ActivityPanel({ entries, onClose }: Props): React.JSX.Element {
       <header className="activity-header">
         <span className="activity-title">Activity</span>
         <span className="activity-count">{entries.length > 0 ? `${entries.length}` : ''}</span>
+        {/* Auto sync is the other direction: what the shell tells Claude. */}
+        <label
+          className="activity-toggle"
+          title={
+            sessionId
+              ? 'Tell Claude what you run in this shell, without being asked'
+              : 'Open a Claude and shell pair to change this'
+          }
+        >
+          <input
+            type="checkbox"
+            checked={autoSync}
+            disabled={!sessionId}
+            onChange={(e) => onAutoSync(e.currentTarget.checked)}
+          />
+          auto sync
+        </label>
         <button className="activity-close" onClick={onClose} title="Close (Esc)" aria-label="Close activity">
           ×
         </button>

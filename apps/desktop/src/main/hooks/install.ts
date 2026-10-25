@@ -111,14 +111,26 @@ export function writeHookSettings(o: { dir: string; sessionId: string; hookPath:
   // under "Application Support", so unquoted it is two words and neither
   // exists. Single quotes, with any quote in the path closed and reopened.
   const command = `'${o.hookPath.replace(/'/g, `'\\''`)}'`
-  const entry = { type: 'command', command, timeout: 5, async: false }
+  const blocking = { type: 'command', command, timeout: 5, async: false }
+  // Status events return nothing, so they need not hold up the turn.
+  const watching = { type: 'command', command, timeout: 5, async: true }
   const settings = {
     hooks: {
-      // The start of a turn: everything the shell did since Claude last heard.
-      UserPromptSubmit: [{ hooks: [entry] }],
+      // The start of a turn: what the user attached, and everything the shell
+      // did since Claude last heard.
+      // What the session can reach, said once at the start so Claude need
+      // not go looking before its first command.
+      SessionStart: [{ hooks: [blocking] }],
+      UserPromptSubmit: [{ hooks: [blocking] }],
       // And again between tool calls, so a failure that happens while Claude
       // is working reaches it before the turn ends.
-      PostToolUse: [{ hooks: [entry] }]
+      PostToolUse: [{ hooks: [blocking] }],
+      // The rest is Seam watching: whether a session is working, waiting on
+      // an answer, or done, so a tab that is not in front can say so.
+      Notification: [{ hooks: [watching] }],
+      PermissionRequest: [{ hooks: [watching] }],
+      Stop: [{ hooks: [watching] }],
+      SessionEnd: [{ hooks: [watching] }]
     }
   }
   writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 })

@@ -3,6 +3,7 @@ import {
   IPC,
   type ApprovalRequest,
   type AuditEntry,
+  type SessionStatus,
   type CommandsChangedEvent,
   type MenuCommand,
   type SeamApi,
@@ -42,6 +43,16 @@ ipcRenderer.on(IPC.auditAppended, (_e, entry: AuditEntry) => {
   for (const l of auditListeners) l(entry)
 })
 
+const statusListeners = new Set<(status: SessionStatus) => void>()
+ipcRenderer.on(IPC.sessionStatusChanged, (_e, status: SessionStatus) => {
+  for (const l of statusListeners) l(status)
+})
+
+const attachListeners = new Set<(event: { sessionId: string; queued: number }) => void>()
+ipcRenderer.on(IPC.attachQueueChanged, (_e, event: { sessionId: string; queued: number }) => {
+  for (const l of attachListeners) l(event)
+})
+
 const commandListeners = new Set<(event: CommandsChangedEvent) => void>()
 ipcRenderer.on(IPC.commandsChanged, (_e, event: CommandsChangedEvent) => {
   for (const fn of commandListeners) fn(event)
@@ -69,6 +80,25 @@ const api: SeamApi = {
       approvalDoneListeners.add(listener)
       return () => approvalDoneListeners.delete(listener)
     }
+  },
+  sessions: {
+    statuses: () => ipcRenderer.invoke(IPC.sessionStatuses),
+    onStatus: (listener) => {
+      statusListeners.add(listener)
+      return () => statusListeners.delete(listener)
+    }
+  },
+  attach: {
+    last: (shellId, claudeId) => ipcRenderer.invoke(IPC.contextAttachLast, shellId, claudeId),
+    clear: (sessionId) => ipcRenderer.send(IPC.attachClear, sessionId),
+    onChanged: (listener) => {
+      attachListeners.add(listener)
+      return () => attachListeners.delete(listener)
+    }
+  },
+  autoSync: {
+    get: (sessionId) => ipcRenderer.invoke(IPC.autoSyncGet, sessionId),
+    set: (sessionId, on) => ipcRenderer.send(IPC.autoSyncSet, sessionId, on)
   },
   audit: {
     list: () => ipcRenderer.invoke(IPC.auditList),

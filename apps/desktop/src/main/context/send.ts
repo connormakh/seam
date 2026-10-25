@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SendContextResult } from '@shared/ipc'
-import type { CommandTracker } from '../shell/command-tracker'
-import type { Tmux } from '../tmux/tmux'
+import type { CommandRecord, CommandTracker } from '../shell/command-tracker'
+import type { Tmux, TmuxSession } from '../tmux/tmux'
 import { formatShellContext } from './shell-context'
 
 /** Foreground programs that mean "a shell prompt", not Claude Code. */
@@ -40,18 +40,7 @@ export class ContextSender {
       throw new SendError('Claude Code is not running in this pair. Start it with `claude` in the left pane, then send again.')
     }
 
-    const record = await this.o.commands.lastFinished(shellId)
-    if (!record) throw new SendError('Nothing to send yet: no command has finished in this shell.')
-
-    const base = { shellName: shell.title || 'shell', homeDir: this.o.homeDir }
-    let ctx = formatShellContext(record, base)
-    if (ctx.truncated && record.output) {
-      mkdirSync(this.o.contextDir, { recursive: true, mode: 0o700 })
-      const file = join(this.o.contextDir, `${shellId}-${record.id}.log`)
-      writeFileSync(file, `$ ${record.command}\n${record.output}\n`, { mode: 0o600 })
-      ctx = formatShellContext(record, { ...base, fullOutputPath: file })
-    }
-
+    const { ctx, record } = await this.lastContext(shellId, shell.title)
     await this.o.tmux.pasteText(claudeId, ctx.text)
     return {
       command: record.command,
@@ -60,5 +49,54 @@ export class ContextSender {
       truncated: ctx.truncated,
       masked: ctx.masked
     }
+  }
+
+  /**
+   * Attach mode: the same context, queued for Claude's next prompt instead of
+   * typed into it. It is the robust half of the pair, because it does not
+   * depend on Claude Code's input box accepting a paste, and because it works
+   * while Claude is mid-turn, when there is no prompt to paste into.
+   */
+  async attachLast(shellId: string, claudeId: string): Promise<SendContextResult & { text: string }> {
+    const shell = await this.requirePair(shellId, claudeId)
+    const { ctx, record } = await this.lastContext(shellId, shell.title)
+    return {
+      text: ctx.text,
+      command: record.command,
+      exitCode: record.exitCode,
+      lines: ctx.lines,
+      truncated: ctx.truncated,
+      masked: ctx.masked
+    }
+  }
+
+  /** The pair's shell, or a refusal naming what is wrong. */
+  private async requirePair(shellId: string, claudeId: string): Promise<TmuxSession> {
+    const sessions = new Map((await this.o.tmux.listSessions()).map((s) => [s.id, s]))
+    const shell = sessions.get(shellId)
+    const claude = sessions.get(claudeId)
+    if (!shell || !claude || shell.kind !== 'shell' || claude.kind !== 'claude' || shell.pairId !== claudeId || claude.pairId !== shellId) {
+      throw new SendError('Those terminals are not a Claude + shell pair.')
+    }
+    return shell
+  }
+
+  /** The last finished command, formatted, with its full output saved if it was cut. */
+  private async lastContext(
+    shellId: string,
+    shellTitle: string
+  ): Promise<{ ctx: ReturnType<typeof formatShellContext>; record: CommandRecord }> {
+    const record = await this.o.commands.lastFinished(shellId)
+    if (!record) throw new SendError('Nothing to send yet: no command has finished in this shell.')
+
+    const base = { shellName: shellTitle || 'shell', homeDir: this.o.homeDir }
+    let ctx = formatShellContext(record, base)
+    if (ctx.truncated && record.output) {
+      mkdirSync(this.o.contextDir, { recursive: true, mode: 0o700 })
+      const file = join(this.o.contextDir, `${shellId}-${record.id}.log`)
+      writeFileSync(file, `$ ${record.command}\n${record.output}\n`, { mode: 0o600 })
+      ctx = formatShellContext(record, { ...base, fullOutputPath: file })
+    }
+    return { ctx, record }
   }
 }

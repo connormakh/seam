@@ -12,9 +12,12 @@ interface Props {
   latest: Record<string, CommandSummary>
   /** Cards Claude is waiting on, by the shell they target. */
   approvals: Record<string, ApprovalRequest>
+  /** How much is queued for each Claude session's next prompt. */
+  attached: Record<string, number>
   onFocus(id: string): void
   onSend(unit: Unit): void
   onDecide(id: string, decision: ApprovalDecision): void
+  onClearAttached(sessionId: string): void
 }
 
 const MIN_RATIO = 0.2
@@ -40,7 +43,17 @@ function saveRatio(key: string, ratio: number): void {
 }
 
 /** A tab's content: one terminal, or Claude and its shell side by side. */
-export function UnitView({ unit, visible, latest, approvals, onFocus, onSend, onDecide }: Props): React.JSX.Element {
+export function UnitView({
+  unit,
+  visible,
+  latest,
+  approvals,
+  attached,
+  onFocus,
+  onSend,
+  onDecide,
+  onClearAttached
+}: Props): React.JSX.Element {
   const [ratio, setRatio] = useState(() => readRatio(unit.key))
   const [dragging, setDragging] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -78,6 +91,16 @@ export function UnitView({ unit, visible, latest, approvals, onFocus, onSend, on
         <span className="pane-path">{shortPath(latest[m.id]?.cwd ?? m.cwd)}</span>
         {m.kind === 'shell' && (
           <CommandStatus latest={latest[m.id]} {...(isPair(unit) ? { onSend: () => onSend(unit) } : {})} />
+        )}
+        {/* Waiting to go with the next prompt, with a way to change your mind. */}
+        {m.kind === 'claude' && (attached[m.id] ?? 0) > 0 && (
+          <button
+            className="attach-chip"
+            title="Attached to your next prompt. Click to drop it."
+            onClick={() => onClearAttached(m.id)}
+          >
+            {attached[m.id]} attached
+          </button>
         )}
       </header>
       <div className="pane-body">
