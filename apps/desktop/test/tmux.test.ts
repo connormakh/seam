@@ -75,3 +75,17 @@ describe('Tmux (real server)', () => {
     expect(args).toEqual(['-u', '-L', tmux.opts.socketName, '-f', tmux.opts.configPath, 'attach-session', '-t', '=abc'])
   })
 })
+
+describe('Tmux ordering', () => {
+  it('lists sessions in creation order even within the same second', async () => {
+    const { tmux, dir } = makeTestTmux()
+    try {
+      const ids = ['o-1', 'o-2', 'o-3', 'o-4', 'o-5']
+      for (const id of ids) await tmux.newSession({ id, kind: 'shell', cwd: dir, command: ['sh'] })
+      expect((await tmux.listSessions()).map((s) => s.id)).toEqual(ids)
+    } finally {
+      await tmux.killServer()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

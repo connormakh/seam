@@ -36,6 +36,8 @@ export interface NewSessionOptions {
   cols?: number
   rows?: number
   title?: string
+  /** Whether a tab should show this terminal. Defaults to true. */
+  open?: boolean
 }
 
 export interface TmuxSession {
@@ -50,6 +52,10 @@ export interface TmuxSession {
   attachedClients: number
   /** True once the pane's program has exited (only kept with remain-on-exit). */
   dead: boolean
+  /** Whether Seam shows this terminal in a tab (vs. running in the background). */
+  open: boolean
+  /** tmux's own session number, increasing in creation order. */
+  serial: number
 }
 
 export class TmuxError extends Error {
@@ -128,6 +134,7 @@ export class Tmux {
     const target = `=${o.id}:`
     await this.run(['set-option', '-t', target, '@seam-kind', o.kind])
     await this.run(['set-option', '-t', target, '@seam-title', o.title ?? ''])
+    await this.run(['set-option', '-t', target, '@seam-open', o.open === false ? '0' : '1'])
   }
 
   async hasSession(id: string): Promise<boolean> {
@@ -151,7 +158,9 @@ export class Tmux {
       '#{pane_pid}',
       '#{session_created}',
       '#{session_attached}',
-      '#{pane_dead}'
+      '#{pane_dead}',
+      '#{@seam-open}',
+      '#{session_id}'
     ]
     let out: string
     try {
@@ -165,7 +174,7 @@ export class Tmux {
     const sessions: TmuxSession[] = []
     for (const line of out.split('\n')) {
       if (!line) continue
-      const [id, kind, title, cwd, cmd, pid, created, attached, dead] = line.split(SEP)
+      const [id, kind, title, cwd, cmd, pid, created, attached, dead, open, sessionId] = line.split(SEP)
       if (!id || seen.has(id)) continue // one entry per session (first pane)
       if (kind !== 'shell' && kind !== 'claude') continue // not ours
       seen.add(id)
@@ -178,15 +187,24 @@ export class Tmux {
         panePid: Number(pid),
         createdAt: Number(created) * 1000,
         attachedClients: Number(attached),
-        dead: dead === '1'
+        dead: dead === '1',
+        open: open !== '0',
+        // "$12" -> 12; tmux hands these out in creation order.
+        serial: Number((sessionId ?? '').replace('$', '')) || 0
       })
     }
-    return sessions.sort((a, b) => a.createdAt - b.createdAt)
+    // session_created has 1 s resolution; the serial breaks ties.
+    return sessions.sort((a, b) => a.createdAt - b.createdAt || a.serial - b.serial)
   }
 
   async setTitle(id: string, title: string): Promise<void> {
     assertId(id)
     await this.run(['set-option', '-t', `=${id}:`, '@seam-title', title])
+  }
+
+  async setOpen(id: string, open: boolean): Promise<void> {
+    assertId(id)
+    await this.run(['set-option', '-t', `=${id}:`, '@seam-open', open ? '1' : '0'])
   }
 
   async killSession(id: string): Promise<void> {

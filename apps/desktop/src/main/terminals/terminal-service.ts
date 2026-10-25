@@ -142,6 +142,10 @@ export class TerminalService {
     }
   }
 
+  async setOpen(id: string, open: boolean): Promise<void> {
+    await this.o.tmux.setOpen(id, open)
+  }
+
   isAttached(id: string): boolean {
     return this.attachments.has(id)
   }
@@ -159,7 +163,8 @@ export class TerminalService {
       cwd: s.cwd,
       currentCommand: s.currentCommand,
       createdAt: s.createdAt,
-      attached: this.attachments.has(s.id)
+      attached: this.attachments.has(s.id),
+      open: s.open
     }
   }
 }

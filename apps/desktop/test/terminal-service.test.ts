@@ -97,3 +97,33 @@ describe('TerminalService (real tmux + node-pty)', () => {
     await expect(service.attach('t-missing', { cols: 80, rows: 24 })).rejects.toThrow(/not running/)
   })
 })
+
+describe('TerminalService open state', () => {
+  let tmux: Tmux
+  let dir: string
+  let service: TerminalService
+
+  beforeAll(() => {
+    ;({ tmux, dir } = makeTestTmux())
+    service = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, events: { data: () => {}, exit: () => {} } })
+  })
+
+  afterAll(async () => {
+    await tmux.killServer()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('new terminals are open, and the flag survives a fresh service', async () => {
+    const a = await service.create()
+    const b = await service.create()
+    expect(a.open).toBe(true)
+
+    await service.setOpen(b.id, false)
+
+    // A new service over the same server is what a relaunch looks like.
+    const relaunched = new TerminalService({ tmux, spawnPty: spawn, defaultCwd: dir, events: { data: () => {}, exit: () => {} } })
+    const byId = new Map((await relaunched.list()).map((t) => [t.id, t]))
+    expect(byId.get(a.id)?.open).toBe(true)
+    expect(byId.get(b.id)?.open).toBe(false)
+  })
+})

@@ -13,6 +13,7 @@ export const IPC = {
   terminalAttach: 'terminal:attach',
   terminalDetach: 'terminal:detach',
   terminalKill: 'terminal:kill',
+  terminalSetOpen: 'terminal:set-open',
   /** renderer -> main, fire and forget */
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
@@ -42,6 +43,8 @@ export interface TerminalInfo {
   createdAt: number
   /** True while this window has a live attachment to it. */
   attached: boolean
+  /** Shown in a tab. False means it runs in the background until reopened. */
+  open: boolean
 }
 
 export interface CreateTerminalOptions {
@@ -75,6 +78,8 @@ export interface TerminalApi {
   detach(id: string): Promise<void>
   /** End the terminal and its processes. */
   kill(id: string): Promise<void>
+  /** Remember whether the terminal has a tab, so relaunch restores the same tabs. */
+  setOpen(id: string, open: boolean): Promise<void>
   write(id: string, data: string): void
   resize(id: string, size: TerminalSize): void
   onData(id: string, listener: (data: string) => void): () => void

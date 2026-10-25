@@ -50,6 +50,9 @@ export function registerIpc(rt: Runtime): void {
   )
   ipcMain.handle(IPC.terminalDetach, (_e, id: unknown) => requireTerminals(rt).detach(asId(id)))
   ipcMain.handle(IPC.terminalKill, (_e, id: unknown) => requireTerminals(rt).kill(asId(id)))
+  ipcMain.handle(IPC.terminalSetOpen, (_e, id: unknown, open: unknown) =>
+    requireTerminals(rt).setOpen(asId(id), open === true)
+  )
 
   ipcMain.on(IPC.terminalWrite, (_e, id: unknown, data: unknown) => {
     if (typeof data === 'string') rt.terminals?.write(asId(id), data)

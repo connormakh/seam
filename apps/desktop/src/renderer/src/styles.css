@@ -196,3 +196,92 @@ code {
 .error {
   color: var(--danger);
 }
+
+.button-small {
+  margin-top: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.button-danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.bg-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.bg-menu-button {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bg-menu-button:hover,
+.bg-menu-button[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.bg-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 10px;
+  z-index: 10;
+  min-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
+.bg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.bg-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.bg-item:hover {
+  background: var(--bg-hover);
+}
+
+.bg-item-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.bg-item-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bg-item-title {
+  font-weight: 500;
+}
+
+.empty-background {
+  margin-top: 24px;
+  min-width: 360px;
+}
