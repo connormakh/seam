@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { rmSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { Tmux } from '../src/main/tmux/tmux'
 import { makeTestTmux, waitFor } from './helpers'
 
@@ -51,6 +52,30 @@ describe('Tmux (real server)', () => {
     await tmux.sendKeys('env-test', 'echo "probe=$SEAM_PROBE"', { literal: true, enter: true })
     await waitFor(async () => (await tmux.capturePane('env-test')).includes('probe=hello-env'))
     await tmux.killSession('env-test')
+  })
+
+  it('treats # in a start directory literally instead of as a tmux format', async () => {
+    const odd = join(dir, 'C#S')
+    mkdirSync(odd)
+    // Expanded, this would run a command and the cwd would not match the literal path.
+    const evil = join(dir, '#(echo pwned)')
+    mkdirSync(evil)
+
+    await tmux.newSession({ id: 'hash-a', kind: 'shell', cwd: odd, command: ['sh'] })
+    await tmux.newSession({ id: 'hash-b', kind: 'shell', cwd: evil, command: ['sh'] })
+    const byId = new Map((await tmux.listSessions()).map((s) => [s.id, s]))
+    expect(byId.get('hash-a')?.cwd).toBe(odd)
+    expect(byId.get('hash-b')?.cwd).toBe(evil)
+    await tmux.killSession('hash-a')
+    await tmux.killSession('hash-b')
+  })
+
+  it('keeps a listing intact when a title contains a newline', async () => {
+    await tmux.newSession({ id: 'nl', kind: 'shell', cwd: dir, command: ['sh'], title: 'a\nb' })
+    const s = (await tmux.listSessions()).find((x) => x.id === 'nl')
+    expect(s?.title).toBe('a b')
+    expect(s?.cwd).toBe(dir)
+    await tmux.killSession('nl')
   })
 
   it('updates the title', async () => {

@@ -71,6 +71,20 @@ export class TmuxError extends Error {
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
+/**
+ * tmux expands formats in `-c` start directories: "#(cmd)" runs a command
+ * and "#S" becomes the session name. Doubling '#' makes the path literal.
+ */
+export function escapeFormat(value: string): string {
+  return value.replaceAll('#', '##')
+}
+
+/** Option values are listed one per line; keep them on one line. */
+function oneLine(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\u0000-\u001f\u007f\u241f]/g, ' ')
+}
+
 function assertId(id: string): void {
   // tmux treats ':' and '.' as target separators; keep ids boring.
   if (!ID_PATTERN.test(id)) throw new Error(`invalid terminal id: ${JSON.stringify(id)}`)
@@ -124,7 +138,7 @@ export class Tmux {
 
   async newSession(o: NewSessionOptions): Promise<void> {
     assertId(o.id)
-    const args = ['new-session', '-d', '-s', o.id, '-c', o.cwd]
+    const args = ['new-session', '-d', '-s', o.id, '-c', escapeFormat(o.cwd)]
     args.push('-x', String(o.cols ?? 120), '-y', String(o.rows ?? 32))
     for (const [k, v] of Object.entries(o.env ?? {})) args.push('-e', `${k}=${v}`)
     if (o.command?.length) args.push(...o.command)
@@ -133,7 +147,7 @@ export class Tmux {
     // set-option takes a pane target, so the exact-match session form needs a trailing ':'.
     const target = `=${o.id}:`
     await this.run(['set-option', '-t', target, '@seam-kind', o.kind])
-    await this.run(['set-option', '-t', target, '@seam-title', o.title ?? ''])
+    await this.run(['set-option', '-t', target, '@seam-title', oneLine(o.title ?? '')])
     await this.run(['set-option', '-t', target, '@seam-open', o.open === false ? '0' : '1'])
   }
 
@@ -199,7 +213,7 @@ export class Tmux {
 
   async setTitle(id: string, title: string): Promise<void> {
     assertId(id)
-    await this.run(['set-option', '-t', `=${id}:`, '@seam-title', title])
+    await this.run(['set-option', '-t', `=${id}:`, '@seam-title', oneLine(title)])
   }
 
   async setOpen(id: string, open: boolean): Promise<void> {
