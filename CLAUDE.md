@@ -19,13 +19,20 @@ Next, in order:
 
 ## Commands
 
+Node 22.12 or newer; `engine-strict` in `.npmrc` refuses anything older, because
+an older one installs with only a warning and then drops the packages that need
+22, leaving `node_modules` broken.
+
 ```bash
 pnpm install       # postinstall makes node-pty's spawn-helper executable
-pnpm dev           # run the app with hot reload
+pnpm dev           # run the app with hot reload; the first run downloads Electron
 pnpm test          # vitest; integration tests drive real tmux, zsh and bash
 pnpm typecheck
 pnpm build
 ```
+
+Electron 45 has no install script: it fetches its binary the first time something
+requires it, so the download lands on the first `pnpm dev`, not on `pnpm install`.
 
 Headless check of the real app, with a screenshot you can read back:
 
@@ -75,7 +82,11 @@ Renderer: `tabs-model.ts` is a pure reducer of tabs, background units and focus.
 - With no sessions left, `kill-session` says "no current target"; treat it as already gone.
 - node-pty's darwin prebuild ships `spawn-helper` without the executable bit ("posix_spawnp failed"). Fixed by `scripts/fix-node-pty.mjs` and a startup check.
 - Attach must register before its first await (React StrictMode mounts, unmounts and remounts), or two tmux clients attach and output doubles.
-- bash: use `PS0` (4.4+) to detect a command starting; the DEBUG trap misses lines that are only a subshell, like `(exit 3)`. macOS's bash 3.2 falls back to DEBUG.
+- bash: use `PS0` (4.4+) to detect a command starting. macOS's bash 3.2 has no `PS0` and falls back to the DEBUG trap, which never fires for a line that is only a subshell, like `(exit 3)`, because bash runs no simple command in that shell. Those are reported from the prompt instead, spotted by the history number advancing, and their output is not captured: S and E share one line, so the range is empty.
+- macOS's bash 3.2 calls an empty array unbound under `set -u`. In scripts write `${a[@]+"${a[@]}"}`, not `"${a[@]}"`.
+- Editors that are themselves Electron apps export `ELECTRON_RUN_AS_NODE=1`. Inherited, it makes `electron .` run the main entry as plain node, where `electron.app` is undefined. `pnpm dev` and `scripts/smoke.sh` strip it.
 - `paste-buffer` without `-r`, so newlines arrive as CR like a real terminal paste.
-- Records rebuilt after a restart need shell-reported timestamps (`$EPOCHREALTIME`, either decimal separator), not arrival time.
+- Records rebuilt after a restart need shell-reported timestamps (`$EPOCHREALTIME`, either decimal separator), not arrival time. bash before 5.0 has none, so on the bash macOS ships those records fall back to arrival time and a rebuild cannot reproduce them. Tests ask `reportsTime` (`test/helpers.ts`) and assert timings only on a shell that has a clock.
+- `$TMPDIR` on macOS is reached through a symlink (`/var/folders` -> `/private/var/folders`), and tmux and the shells report resolved paths. Tests make temp dirs with `makeTempDir` (`test/helpers.ts`), which resolves them, or nothing compares equal.
+- BSD and GNU tools disagree on exit codes (`ls` on a missing path is 1 on macOS, 2 on GNU). Tests use commands that agree, like `cat`.
 - Electron's default macOS menu binds Cmd+W to close the window; Seam installs its own menu.
