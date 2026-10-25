@@ -1,19 +1,9 @@
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { installShellIntegration, shellLaunch } from '../src/main/shell/integration'
 import type { Tmux } from '../src/main/tmux/tmux'
-import { makeTestTmux, waitFor } from './helpers'
-
-const hasShell = (s: string): boolean => {
-  try {
-    execFileSync('which', [s])
-    return true
-  } catch {
-    return false
-  }
-}
+import { hasShell, makeTestTmux, reportsTime, shellPath, waitFor } from './helpers'
 
 interface Event {
   type: 'S' | 'E'
@@ -58,7 +48,7 @@ for (const shell of ['zsh', 'bash'] as const) {
       const integrationDir = installShellIntegration(join(dir, 'integration'))
       events = join(dir, `${shell}.events`)
       const launch = shellLaunch({
-        shell: execFileSync('which', [shell], { encoding: 'utf8' }).trim(),
+        shell: shellPath(shell),
         integrationDir,
         eventsFile: events,
         tmuxBinary: tmux.opts.binary,
@@ -101,10 +91,14 @@ for (const shell of ['zsh', 'bash'] as const) {
       const end = all.filter((e) => e.type === 'E').at(-1)!
       expect(start.rest.slice(1)).toEqual([home, 'echo first; echo second'])
       expect(end.rest[1]).toBe('0')
-      // Both shells here have $EPOCHREALTIME: seconds with a fraction, end after start.
-      const [t0, t1] = [Number(start.rest[0]), Number(end.rest[0])]
-      expect(t0).toBeGreaterThan(1_600_000_000)
-      expect(t1).toBeGreaterThanOrEqual(t0)
+      if (reportsTime(shell)) {
+        // Unix seconds with a fraction, end at or after start.
+        const [t0, t1] = [Number(start.rest[0]), Number(end.rest[0])]
+        expect(t0).toBeGreaterThan(1_600_000_000)
+        expect(t1).toBeGreaterThanOrEqual(t0)
+      } else {
+        expect([start.rest[0], end.rest[0]]).toEqual(['', ''])
+      }
       expect(await outputBetween(tmux, id, start.line, end.line)).toBe('first\nsecond')
     })
 
@@ -112,6 +106,9 @@ for (const shell of ['zsh', 'bash'] as const) {
       const all = await run('(exit 3)', 3)
       expect(all.at(-1)?.type).toBe('E')
       expect(all.at(-1)?.rest[1]).toBe('3')
+      // A line that is only a subshell is still reported, with its command:
+      // bash before 4.4 reaches it from the prompt, not from the DEBUG trap.
+      expect(all.filter((e) => e.type === 'S').at(-1)?.rest[2]).toBe('(exit 3)')
     })
 
     it('reports a command with no output as an empty range', async () => {
