@@ -1,129 +1,110 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AppInfo, TerminalInfo } from '@shared/ipc'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import type { AppInfo } from '@shared/ipc'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
+import { initialTabs, nextShellTitle, tabsReducer } from './tabs-model'
 import { TerminalView } from './terminal/TerminalView'
-
-interface Tab {
-  info: TerminalInfo
-  /** Bumped to remount the view, which re-attaches a fresh client. */
-  generation: number
-}
 
 const api = (): typeof window.seam.terminals => window.seam.terminals
 
-function nextShellTitle(taken: Iterable<string>): string {
-  const used = new Set(taken)
-  if (!used.has('shell')) return 'shell'
-  for (let n = 2; ; n++) if (!used.has(`shell ${n}`)) return `shell ${n}`
-}
+/** More client drops than this within the window means something is wrong; stop remounting. */
+const MAX_REMOUNTS = 3
+const REMOUNT_WINDOW_MS = 10_000
 
 export function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null)
-  const [tabs, setTabs] = useState<Tab[]>([])
-  const [background, setBackground] = useState<TerminalInfo[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [model, dispatch] = useReducer(tabsReducer, initialTabs)
   const [error, setError] = useState<string | null>(null)
-  const [restored, setRestored] = useState(false)
 
-  const tabIds = useRef(new Set<string>())
-  tabIds.current = new Set(tabs.map((t) => t.info.id))
+  // Latest committed model, for event handlers that should not re-subscribe on every change.
+  const modelRef = useRef(model)
+  modelRef.current = model
+  // Titles handed out but not yet in the model, so rapid Cmd+T never repeats one.
+  const reservedTitles = useRef(new Set<string>())
+  const remounts = useRef(new Map<string, number[]>())
 
   const refreshBackground = useCallback(async () => {
-    const all = await api().list()
-    setBackground(all.filter((t) => !tabIds.current.has(t.id)))
+    dispatch({ type: 'set-background', terminals: await api().list() })
   }, [])
 
   // On launch, reopen the tabs that were open last time; the rest stay in
-  // the background menu.
+  // the background list.
   useEffect(() => {
     void (async () => {
-      const appInfo = await window.seam.appInfo()
-      setInfo(appInfo)
-      const all = await api().list()
-      const open = all.filter((t) => t.open)
-      setTabs(open.map((t) => ({ info: t, generation: 0 })))
-      setActiveId(open[0]?.id ?? null)
-      setBackground(all.filter((t) => !t.open))
-      setRestored(true)
+      setInfo(await window.seam.appInfo())
+      dispatch({ type: 'restore', terminals: await api().list() })
     })().catch((err: unknown) => setError(String(err)))
   }, [])
 
-  const openTab = useCallback(
-    async (id: string) => {
-      const t = background.find((b) => b.id === id)
-      if (!t) return
-      await api().setOpen(id, true)
-      setTabs((prev) => (prev.some((p) => p.info.id === id) ? prev : [...prev, { info: { ...t, open: true }, generation: 0 }]))
-      setBackground((prev) => prev.filter((b) => b.id !== id))
-      setActiveId(id)
-    },
-    [background]
-  )
-
   const newShell = useCallback(async () => {
+    const m = modelRef.current
+    const title = nextShellTitle([
+      ...m.tabs.map((t) => t.info.title),
+      ...m.background.map((b) => b.title),
+      ...reservedTitles.current
+    ])
+    reservedTitles.current.add(title)
     try {
-      const taken = [...tabs.map((t) => t.info.title), ...background.map((b) => b.title)]
-      const t = await api().create({ kind: 'shell', title: nextShellTitle(taken) })
-      setTabs((prev) => [...prev, { info: t, generation: 0 }])
-      setActiveId(t.id)
+      dispatch({ type: 'add', info: await api().create({ kind: 'shell', title }) })
       setError(null)
     } catch (err) {
       setError(String(err))
+    } finally {
+      reservedTitles.current.delete(title)
     }
-  }, [tabs, background])
+  }, [])
 
-  const removeTab = useCallback((id: string) => {
-    setTabs((prev) => {
-      const i = prev.findIndex((t) => t.info.id === id)
-      if (i === -1) return prev
-      const next = prev.filter((t) => t.info.id !== id)
-      setActiveId((current) => {
-        if (current !== id) return current
-        const neighbour = next[Math.min(i, next.length - 1)]
-        return neighbour ? neighbour.info.id : null
-      })
-      return next
-    })
+  const openTab = useCallback(async (id: string) => {
+    await api().setOpen(id, true)
+    dispatch({ type: 'open-from-background', id })
   }, [])
 
   /** Close the tab; the terminal keeps running in the background. */
   const closeTab = useCallback(
     (id: string) => {
-      removeTab(id)
+      dispatch({ type: 'remove', id })
       void api()
         .setOpen(id, false)
         .then(refreshBackground)
     },
-    [removeTab, refreshBackground]
+    [refreshBackground]
   )
 
   /** End the terminal and everything running in it. */
-  const endTerminal = useCallback(
-    (id: string) => {
-      removeTab(id)
-      setBackground((prev) => prev.filter((b) => b.id !== id))
-      void api().kill(id)
-    },
-    [removeTab]
-  )
+  const endTerminal = useCallback((id: string) => {
+    dispatch({ type: 'remove', id })
+    void api().kill(id)
+  }, [])
 
   // A terminal that ends (shell exited, killed) loses its tab. A client that
-  // dropped while the terminal still runs is re-attached by remounting.
+  // dropped while the terminal still runs is re-attached by remounting, a
+  // few times at most, so a persistent failure cannot loop forever.
   useEffect(() => {
     return api().onExit(({ id, ended }) => {
       if (ended) {
-        removeTab(id)
-        setBackground((prev) => prev.filter((b) => b.id !== id))
-      } else {
-        setTabs((prev) => prev.map((t) => (t.info.id === id ? { ...t, generation: t.generation + 1 } : t)))
+        remounts.current.delete(id)
+        dispatch({ type: 'remove', id })
+        return
       }
+      const now = Date.now()
+      const recent = (remounts.current.get(id) ?? []).filter((t) => now - t < REMOUNT_WINDOW_MS)
+      recent.push(now)
+      remounts.current.set(id, recent)
+      if (recent.length <= MAX_REMOUNTS) {
+        dispatch({ type: 'remount', id })
+        return
+      }
+      remounts.current.delete(id)
+      const title = modelRef.current.tabs.find((t) => t.info.id === id)?.info.title ?? 'a terminal'
+      setError(`Lost the connection to "${title}" repeatedly. It is still running; reopen it from the background list.`)
+      closeTab(id)
     })
-  }, [removeTab])
+  }, [closeTab])
 
   // Shortcuts live in the application menu (main), which sends commands here.
   useEffect(() => {
     return window.seam.onMenuCommand((command) => {
+      const activeId = modelRef.current.activeId
       switch (command.type) {
         case 'new-shell':
           void newShell()
@@ -134,15 +115,14 @@ export function App(): React.JSX.Element {
         case 'end-terminal':
           if (activeId) endTerminal(activeId)
           break
-        case 'select-tab': {
-          const tab = tabs[command.index]
-          if (tab) setActiveId(tab.info.id)
+        case 'select-tab':
+          dispatch({ type: 'select-index', index: command.index })
           break
-        }
       }
     })
-  }, [activeId, closeTab, endTerminal, newShell, tabs])
+  }, [closeTab, endTerminal, newShell])
 
+  const { tabs, background, activeId, restored } = model
   const tmuxMissing = info !== null && info.tmux === null
 
   return (
@@ -153,13 +133,22 @@ export function App(): React.JSX.Element {
           <TabBar
             tabs={tabs.map((t) => t.info)}
             activeId={activeId}
-            onSelect={setActiveId}
+            onSelect={(id) => dispatch({ type: 'activate', id })}
             onClose={closeTab}
             onNew={() => void newShell()}
           />
         )}
         {tabs.length > 0 && <BackgroundMenu terminals={background} onOpen={(id) => void openTab(id)} onEnd={endTerminal} />}
       </header>
+
+      {error && tabs.length > 0 && (
+        <div className="banner" role="alert">
+          <span>{error}</span>
+          <button type="button" className="banner-dismiss" aria-label="Dismiss" onClick={() => setError(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       <main className="workspace">
         {tabs.map((t) => (
