@@ -144,13 +144,13 @@ describe('auto sync (real hook, real socket, real bash)', () => {
     const spaced = writeHookSettings({
       dir: join(dir, 'claude'),
       sessionId: 'spaced',
-      hookPath: '/Users/c/Library/Application Support/Seam/claude/seam-hook'
+      hookPath: '/Users/someone/Library/Application Support/Seam/claude/seam-hook'
     })
     const command = JSON.parse(readFileSync(spaced, 'utf8')).hooks.UserPromptSubmit[0].hooks[0].command as string
-    expect(command).toBe(`'/Users/c/Library/Application Support/Seam/claude/seam-hook'`)
+    expect(command).toBe(`'/Users/someone/Library/Application Support/Seam/claude/seam-hook'`)
     // And actually run as one word.
     expect(execFileSync('/bin/sh', ['-c', `printf %s ${command.replace('seam-hook', 'seam-hook-x')}`], { encoding: 'utf8' })).toBe(
-      '/Users/c/Library/Application Support/Seam/claude/seam-hook-x'
+      '/Users/someone/Library/Application Support/Seam/claude/seam-hook-x'
     )
   })
 
