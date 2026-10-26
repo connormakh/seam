@@ -8,6 +8,7 @@ interface Props {
   onSelect(unit: Unit, background: boolean): void
   onNewSession(root: string): void
   onForget(root: string): void
+  onSettings(): void
 }
 
 const SAYS: Record<SessionStatus['state'], string> = {
@@ -23,7 +24,15 @@ const SAYS: Record<SessionStatus['state'], string> = {
  * project you closed everything in is still listed and one click from being
  * open again. Tabs still show what is open; this says what exists.
  */
-export function Sidebar({ groups, activeKey, statuses, onSelect, onNewSession, onForget }: Props): React.JSX.Element {
+export function Sidebar({
+  groups,
+  activeKey,
+  statuses,
+  onSelect,
+  onNewSession,
+  onForget,
+  onSettings
+}: Props): React.JSX.Element {
   const row = (unit: Unit, background: boolean): React.JSX.Element => {
     const claude = unit.members.find((m) => m.kind === 'claude')
     const status = claude ? statuses[claude.id] : undefined
@@ -56,6 +65,7 @@ export function Sidebar({ groups, activeKey, statuses, onSelect, onNewSession, o
 
   return (
     <aside className="sidebar" aria-label="Workspaces">
+      <div className="sidebar-scroll">
       {groups.length === 0 && <p className="ws-empty">No workspaces yet. ⌘T opens one.</p>}
       {groups.map((group) => (
         <section className="ws" key={group.workspace.root || 'elsewhere'}>
@@ -93,6 +103,13 @@ export function Sidebar({ groups, activeKey, statuses, onSelect, onNewSession, o
           )}
         </section>
       ))}
+      </div>
+      {/* Pinned to the bottom, where a settings button is looked for. */}
+      <footer className="sidebar-footer">
+        <button className="sidebar-settings" onClick={onSettings} title="Settings (⌘,)">
+          <span aria-hidden="true">⚙</span> Settings
+        </button>
+      </footer>
     </aside>
   )
 }

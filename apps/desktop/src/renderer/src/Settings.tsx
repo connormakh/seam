@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { AppInfo, PolicyMode, SeamSettingsView } from '@shared/ipc'
+import type { AppInfo, PolicyMode, SeamSettingsView, ThemeName } from '@shared/ipc'
+import { THEMES, THEME_NAMES } from './terminal/themes'
 
 interface Props {
   info: AppInfo | null
+  theme: ThemeName
+  /** Applied as you click, so the choice is visible before it is saved. */
+  onTheme(theme: ThemeName): void
   onClose(): void
 }
 
@@ -20,7 +24,7 @@ const MODES: { value: PolicyMode; label: string; what: string }[] = [
  * of what Seam is driving, because "which claude, which tmux" is the first
  * question when something behaves oddly.
  */
-export function Settings({ info, onClose }: Props): React.JSX.Element {
+export function Settings({ info, theme, onTheme, onClose }: Props): React.JSX.Element {
   const [settings, setSettings] = useState<SeamSettingsView | null>(null)
   const [prefixes, setPrefixes] = useState('')
 
@@ -57,6 +61,35 @@ export function Settings({ info, onClose }: Props): React.JSX.Element {
           <p className="settings-note">Loading…</p>
         ) : (
           <div className="settings-body">
+            <section className="settings-group">
+              <h3>Appearance</h3>
+              <div className="theme-grid">
+                {THEME_NAMES.map((name) => {
+                  const t = THEMES[name]
+                  return (
+                    <button
+                      key={name}
+                      className={`theme-card${theme === name ? ' theme-card-on' : ''}`}
+                      onClick={() => {
+                        // Painted straight away, saved straight away: there is
+                        // no apply button, so these must not drift apart.
+                        onTheme(name)
+                        save({ theme: name })
+                      }}
+                    >
+                      <span className="theme-swatch" style={{ background: t.ui.bg, borderColor: t.ui.border }}>
+                        <i style={{ background: t.ui.accent }} />
+                        <i style={{ background: t.terminal.green }} />
+                        <i style={{ background: t.ui.danger }} />
+                        <i style={{ background: t.ui.text }} />
+                      </span>
+                      {t.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
             <section className="settings-group">
               <label className="settings-row">
                 <input

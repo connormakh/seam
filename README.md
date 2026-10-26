@@ -64,6 +64,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 - **Activity** (⌘⇧A). Every tool call Claude has made, with times and outcomes.
 - **Private shells.** One click keeps a shell out of Claude's reach entirely: not listed, not readable, not writable. For the one holding credentials.
 - **Secrets masked** in everything sent to Claude, by pattern.
+- **Themes.** Dark, Midnight, Ember and Light, from the Settings button at the bottom of the sidebar. The chrome and the terminals change together.
 
 ## Shortcuts
 
@@ -77,7 +78,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 | ⌘⌥↩ | Attach it to Claude's next prompt |
 | ⌘⇧A | Activity |
 | ⌘⌃S | Workspaces sidebar |
-| ⌘, | Settings |
+| ⌘, | Settings (also the button at the bottom of the sidebar) |
 | ⌘W | Close tab (its terminals keep running) |
 | ⌘⇧W | End the tab and its terminals |
 | ⌘1–⌘9 | Switch tabs |

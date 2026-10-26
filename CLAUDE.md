@@ -17,6 +17,7 @@ Not for v1: other agent CLIs (the shape leaves room, only Claude Code is wired u
 
 Done:
 - **Terminal skeleton:** tabs backed by a private tmux server; closing a tab keeps it running; relaunch restores tabs with screens intact.
+- **Themes:** Dark, Midnight, Ember and Light, chosen in Settings and saved. `renderer/terminal/themes.ts` holds both halves of each one, the CSS variables and the xterm palette, because a theme that defines only one ends up as a light sidebar around a dark pane; a test checks every theme defines every key.
 - **Settings (Cmd+,):** shell-only, the default policy and its allowlist prefixes, and what Seam is driving (the Claude Code and tmux it found). Writes the same `settings.json` that can be edited by hand.
 - **First-run check:** Claude Code is looked for through the login shell at startup, with its version compared to the oldest Seam can drive, and said in a banner rather than discovered inside a pane later.
 - **Workspaces:** a sidebar (Cmd+Ctrl+S) groups sessions by the folder they were opened on, with a status dot each. A workspace is remembered the moment a pair opens on a folder and outlives everything running in it, so a project is one click from being open again; `+` adds another session to the same folder, which is what makes more than one per project possible.

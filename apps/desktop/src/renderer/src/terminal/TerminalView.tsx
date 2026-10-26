@@ -3,9 +3,12 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { terminalOptions } from './theme'
+import { DEFAULT_THEME, THEMES } from './themes'
+import type { ThemeName } from '@shared/ipc'
 
 interface Props {
   id: string
+  theme: ThemeName
   /** On screen (its tab is active). */
   visible: boolean
   /** Should hold the keyboard while visible. */
@@ -21,19 +24,24 @@ interface Props {
  * and never draw at a placeholder size. Unmounting detaches (the terminal
  * keeps running). Hidden views stay mounted to keep their screen.
  */
-export function TerminalView({ id, visible, focused, onFocus }: Props): React.JSX.Element {
+export function TerminalView({ id, theme, visible, focused, onFocus }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const showRef = useRef<() => void>(() => {})
   const onFocusRef = useRef(onFocus)
   onFocusRef.current = onFocus
+  // Read when a terminal is created; the effect below handles later changes.
+  const themeRef = useRef<ThemeName>(theme)
+  themeRef.current = THEMES[theme] ? theme : DEFAULT_THEME
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
     const api = window.seam.terminals
 
-    const term = new Terminal(terminalOptions)
+    // The palette is set here rather than in the shared options, so a theme
+    // change repaints a terminal that is already running.
+    const term = new Terminal({ ...terminalOptions, theme: THEMES[themeRef.current].terminal })
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
@@ -82,6 +90,13 @@ export function TerminalView({ id, visible, focused, onFocus }: Props): React.JS
       showRef.current = () => {}
     }
   }, [id])
+
+  // Repaint a terminal that is already open. xterm takes a whole palette, so
+  // this is the one place a theme change has to reach into a live instance.
+  useEffect(() => {
+    const term = termRef.current
+    if (term) term.options.theme = THEMES[theme]?.terminal ?? THEMES[DEFAULT_THEME].terminal
+  }, [theme])
 
   useEffect(() => {
     if (!visible) return

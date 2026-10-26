@@ -7,11 +7,13 @@ import type {
   CommandSummary,
   PolicyMode,
   SessionStatus,
+  ThemeName,
   Workspace
 } from '@shared/ipc'
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { Settings } from './Settings'
+import { applyTheme, DEFAULT_THEME } from './terminal/themes'
 import { Sidebar } from './Sidebar'
 import { TabBar } from './TabBar'
 import { groupByWorkspace, initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
@@ -39,6 +41,7 @@ export function App(): React.JSX.Element {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME)
   const [attached, setAttached] = useState<Record<string, number>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
@@ -341,6 +344,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void window.seam.workspaces.list().then(setWorkspaces)
   }, [])
+
+  // The chrome is CSS variables on the root; the terminals take the palette
+  // through their own options, which is why both halves live in one table.
+  useEffect(() => {
+    void window.seam.settings.get().then((s) => setTheme(s.theme))
+  }, [])
+  useEffect(() => {
+    applyTheme(theme, document.documentElement)
+  }, [theme])
   const tmuxMissing = info !== null && info.tmux === null
   // Said once, at the top, rather than discovered inside a pane later.
   const claudeProblem = info?.claude.ok === false ? info.claude.problem : null
@@ -407,10 +419,13 @@ export function App(): React.JSX.Element {
           }
           onNewSession={(root) => void newSessionIn(root)}
           onForget={(root) => void window.seam.workspaces.forget(root).then(setWorkspaces)}
+          onSettings={() => setSettingsOpen(true)}
         />
       )}
 
-      {settingsOpen && <Settings info={info} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Settings info={info} theme={theme} onTheme={setTheme} onClose={() => setSettingsOpen(false)} />
+      )}
 
       {claudeProblem && (
         <div className="banner banner-warn" role="status">
@@ -427,6 +442,7 @@ export function App(): React.JSX.Element {
             latest={latest}
             approvals={approvals}
             attached={attached}
+            theme={theme}
             onFocus={onFocus}
             onSend={(unit) => void sendLast(unit)}
             onDecide={decideApproval}

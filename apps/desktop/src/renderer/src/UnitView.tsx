@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import type { ApprovalDecision, ApprovalRequest, CommandSummary, TerminalInfo } from '@shared/ipc'
+import type { ApprovalDecision, ApprovalRequest, CommandSummary, TerminalInfo, ThemeName } from '@shared/ipc'
 import { ApprovalCard } from './ApprovalCard'
 import { CommandStatus } from './CommandStatus'
 import { TerminalView } from './terminal/TerminalView'
@@ -14,6 +14,7 @@ interface Props {
   approvals: Record<string, ApprovalRequest>
   /** How much is queued for each Claude session's next prompt. */
   attached: Record<string, number>
+  theme: ThemeName
   onFocus(id: string): void
   onSend(unit: Unit): void
   onDecide(id: string, decision: ApprovalDecision): void
@@ -50,6 +51,7 @@ export function UnitView({
   latest,
   approvals,
   attached,
+  theme,
   onFocus,
   onSend,
   onDecide,
@@ -125,6 +127,7 @@ export function UnitView({
         <TerminalView
           key={`${m.id}:${unit.generations[m.id] ?? 0}`}
           id={m.id}
+          theme={theme}
           visible={visible}
           focused={unit.focusId === m.id}
           onFocus={onFocus}

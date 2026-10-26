@@ -47,6 +47,7 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     // the screen can only ever make the file say something the app accepts.
     const o = (patch ?? {}) as Record<string, unknown>
     const next: Record<string, unknown> = {}
+    if (typeof o['theme'] === 'string') next['theme'] = o['theme']
     if (typeof o['shellOnly'] === 'boolean') next['shellOnly'] = o['shellOnly']
     if (o['policy']) next['policy'] = o['policy']
     if (o['policies']) next['policies'] = o['policies']

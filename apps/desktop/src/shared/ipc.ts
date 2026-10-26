@@ -141,6 +141,7 @@ export type ApprovalDecision = 'approve' | 'approve-similar' | 'deny'
 
 /** Everything Seam remembers between launches, as the settings screen sees it. */
 export interface SeamSettingsView {
+  theme: ThemeName
   shellOnly: boolean
   policy: { mode: PolicyMode; allowPrefixes: string[] }
   /** Per workspace root, over the default above. */
@@ -154,6 +155,9 @@ export interface Workspace {
   root: string
   name: string
 }
+
+/** Which set of colours the window and its terminals use. */
+export type ThemeName = 'dark' | 'midnight' | 'ember' | 'light'
 
 /** What Claude may run in a workspace's shells without being asked. */
 export type PolicyMode = 'allow' | 'ask' | 'allowlist' | 'readonly'

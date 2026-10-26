@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import type { Workspace } from '@shared/ipc'
+import type { ThemeName, Workspace } from '@shared/ipc'
 import { DEFAULT_POLICY, type PolicyMode, type PolicySettings } from './mcp/policy'
 
 /**
@@ -18,6 +18,8 @@ import { DEFAULT_POLICY, type PolicyMode, type PolicySettings } from './mcp/poli
  */
 
 export interface SeamSettings {
+  /** Which colours the window and its terminals use. */
+  theme: ThemeName
   /** Claude runs its commands in the companion shell rather than its own Bash. */
   shellOnly: boolean
   /** The default, for any workspace without one of its own. */
@@ -35,6 +37,7 @@ export interface SeamSettings {
 }
 
 export const DEFAULTS: SeamSettings = {
+  theme: 'dark',
   shellOnly: true,
   policy: DEFAULT_POLICY,
   policies: {},
@@ -43,6 +46,7 @@ export const DEFAULTS: SeamSettings = {
 }
 
 const MODES: PolicyMode[] = ['allow', 'ask', 'allowlist', 'readonly']
+const THEMES: ThemeName[] = ['dark', 'midnight', 'ember', 'light']
 
 function asStrings(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === 'string') ? (value as string[]) : null
@@ -84,6 +88,7 @@ function parse(raw: unknown): SeamSettings {
     }
   }
   return {
+    theme: THEMES.includes(o['theme'] as ThemeName) ? (o['theme'] as ThemeName) : DEFAULTS.theme,
     shellOnly: typeof o['shellOnly'] === 'boolean' ? o['shellOnly'] : DEFAULTS.shellOnly,
     policy,
     policies,

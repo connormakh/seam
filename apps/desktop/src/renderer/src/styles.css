@@ -811,8 +811,6 @@ code {
   bottom: 0;
   z-index: 10;
   width: var(--sidebar-width);
-  overflow-y: auto;
-  padding: 6px 0;
   border-right: 1px solid var(--border);
   background: var(--bg-raised);
 }
@@ -1057,4 +1055,86 @@ code {
 
 .settings-bad {
   color: var(--danger);
+}
+
+/* The sidebar scrolls; its footer does not. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.sidebar-footer {
+  flex: none;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-settings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-settings:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Themes, shown as the colours they are rather than named in a list. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.theme-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.theme-card:hover {
+  border-color: var(--text-muted);
+}
+
+.theme-card-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.theme-swatch {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid;
+  border-radius: 5px;
+}
+
+.theme-swatch i {
+  width: 6px;
+  height: 12px;
+  border-radius: 2px;
 }
