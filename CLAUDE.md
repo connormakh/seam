@@ -54,6 +54,8 @@ cd apps/desktop
 SEAM_SMOKE_SCREENSHOT=/tmp/seam.png scripts/smoke.sh '(async () => document.body.innerText)()'
 ```
 
+Shortcuts live in `src/main/menu.ts`. Ctrl+` alternates between Claude and the shell; Cmd+[ and Cmd+] say which side instead, a pair being drawn Claude then shell.
+
 Useful env vars: `SEAM_TMUX_SOCKET` (socket name; dev default `seam-dev`, packaged `seam`), `SEAM_TMUX` (tmux binary), `SEAM_CLAUDE_COMMAND` (JSON argv for the Claude side, e.g. `'["python3","scripts/fake-claude.py"]'` for a stand-in), and for smoke tests `SEAM_SMOKE_MENU` (menu item ids to click) and `SEAM_SMOKE_PICK_FOLDER` (answer for the folder picker).
 
 Settings live in `<userData>/settings.json` (`src/main/settings.ts`): `shellOnly`, the run `policy`, and which sessions have auto sync off. A JSON file rather than the design doc's SQLite, because these are a handful of fields and a native module rebuilt per Electron version is not worth carrying for them; the database arrives with the session browser, which needs one for search. It is also the only way to reach a setting with no UI yet, so it is meant to be hand-edited: every field is validated separately and anything unreadable falls back to its default rather than stopping the app.

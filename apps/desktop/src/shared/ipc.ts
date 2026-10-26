@@ -53,6 +53,8 @@ export type MenuCommand =
   | { type: 'new-pair' }
   | { type: 'new-shell' }
   | { type: 'toggle-focus' }
+  /** A pair reads left to right as Claude, then shell. */
+  | { type: 'focus-side'; side: 'left' | 'right' }
   | { type: 'send-last' }
   | { type: 'attach-last' }
   | { type: 'toggle-activity' }

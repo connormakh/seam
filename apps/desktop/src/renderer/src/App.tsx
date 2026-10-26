@@ -266,6 +266,13 @@ export function App(): React.JSX.Element {
         case 'toggle-focus':
           dispatch({ type: 'toggle-focus' })
           break
+        case 'focus-side': {
+          const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
+          // members are ordered Claude first, which is how the pair is drawn.
+          const target = unit?.members[command.side === 'left' ? 0 : 1]
+          if (target) dispatch({ type: 'focus', id: target.id })
+          break
+        }
         case 'toggle-activity':
           setActivityOpen((open) => !open)
           break

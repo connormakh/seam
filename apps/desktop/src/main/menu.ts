@@ -146,6 +146,20 @@ export function installMenu(
           accelerator: 'Ctrl+`',
           click: () => send({ type: 'toggle-focus' })
         },
+        // And by side, for anyone who would rather say where than alternate.
+        // A pair is drawn Claude on the left, shell on the right.
+        {
+          id: 'focus-left',
+          label: 'Focus Claude',
+          accelerator: mac ? 'Cmd+[' : 'Ctrl+[',
+          click: () => send({ type: 'focus-side', side: 'left' })
+        },
+        {
+          id: 'focus-right',
+          label: 'Focus Shell',
+          accelerator: mac ? 'Cmd+]' : 'Ctrl+]',
+          click: () => send({ type: 'focus-side', side: 'right' })
+        },
         { type: 'separator' },
         { role: 'minimize' },
         { role: 'zoom' },
