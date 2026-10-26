@@ -7,3 +7,6 @@ coverage/
 .DS_Store
 .vite/
 *.tsbuildinfo
+
+# Bundled tmux is built per machine by scripts/bundle-tmux.sh.
+**/resources/bin/

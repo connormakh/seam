@@ -31,7 +31,7 @@ Next, in order:
 1. **Milestone 2 is done** (hooks, status badges, attach mode, auto sync). What is left from Claude to shell: per-command gutter marks. The shell can mark its own commands with OSC 133 through tmux passthrough (verified), but xterm's decorations render at zero size here, most likely because `scrollback: 0` leaves no buffer for a marker to live in; it needs a different approach, or a small scrollback. For now "by Claude" is on the pane header for the latest command and in the Activity panel for all of them.
 2. ~~**Claude Code hooks**~~, installed per session with `--settings` (never in the user's repo or global settings): status badges (Working / Waiting for you / Idle) from `UserPromptSubmit`, `Notification`, `PermissionRequest`, `Stop`; **attach mode** (queue shell context, delivered via `UserPromptSubmit` `additionalContext`); **auto sync** (per-pair toggle, digest of new shell activity via `UserPromptSubmit` and `PostToolUse`, capped at 2 KB, errors only for long-running processes). Ignore turn events that carry `agent_id` (subagents). Use `last_assistant_message`, not the transcript file, which lags.
 3. **Session browser:** the workspace sidebar is in. Still to do: index `~/.claude/projects/*/*.jsonl` by project and cwd, FTS search, resume into a pair (`claude --resume <id>`, branch with `--fork-session`).
-4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks, final name, packaging (signing, bundled tmux, auto-update).
+4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks, final name. Packaging is in, unsigned; signing, notarization and auto-update wait on a certificate and a repo.
 
 ## Commands
 
@@ -45,7 +45,16 @@ pnpm dev           # run the app with hot reload; the first run downloads Electr
 pnpm test          # vitest; integration tests drive real tmux, zsh and bash
 pnpm typecheck
 pnpm build
+
+pnpm --filter @seam/desktop bundle:tmux   # copy tmux and its libraries into resources/bin
+pnpm --filter @seam/desktop package       # an unsigned .app and .dmg in apps/desktop/release
 ```
+
+Packaging is unsigned on purpose: Seam is built from source, and notarizing
+needs a paid certificate. electron-builder still ad-hoc signs, which is what
+Apple Silicon requires to run anything at all. `bundle-tmux.sh` rewrites the
+binary's library paths and re-signs it for the same reason; skip it and the
+packaged app falls back to tmux on PATH.
 
 Electron 45 has no install script: it fetches its binary the first time something
 requires it, so the download lands on the first `pnpm dev`, not on `pnpm install`.

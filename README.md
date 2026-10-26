@@ -8,6 +8,30 @@ Seam (working name) is a macOS app where each project's Claude Code sessions and
 
 You can always do the work yourself or hand it to Claude; switching between the two is one keystroke.
 
+## Building it
+
+macOS, Node 22.12 or newer, and tmux (`brew install tmux`).
+
+```bash
+pnpm install
+pnpm dev
+```
+
+To build an app bundle:
+
+```bash
+pnpm --filter @seam/desktop bundle:tmux   # optional: makes the app carry its own tmux
+pnpm --filter @seam/desktop package       # apps/desktop/release/Seam.dmg
+```
+
+The build is unsigned, so the first launch needs right-click > Open, or
+`xattr -dr com.apple.quarantine` on the app. Signing and notarization need a
+paid Apple certificate; building from source does not.
+
+Without `bundle:tmux` the app uses whatever tmux is on your PATH, and says so
+at startup if there is none. It also expects the real `claude` binary on your
+PATH and checks its version when it starts.
+
 ## Status
 
 **M0, terminal skeleton: done. Paired workspaces and Shell to Claude: in.**
