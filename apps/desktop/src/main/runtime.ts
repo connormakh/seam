@@ -288,6 +288,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       ]
       return { command: claudeCommand(shell, args), env }
     },
+    isBusy: async (id) => (await commands.latest(id))?.running === true,
     shellLaunch: (id) =>
       shellLaunch({
         shell,

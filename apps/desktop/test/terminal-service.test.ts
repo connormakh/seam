@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { rmSync } from 'node:fs'
+import { appendFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { spawn } from 'node-pty'
 import type { TerminalExitEvent } from '@shared/ipc'
 import { TerminalService } from '../src/main/terminals/terminal-service'
 import type { Tmux } from '../src/main/tmux/tmux'
-import { makeTempDir, makeTestTmux, waitFor } from './helpers'
+import { makeTempDir, makeTestTmux, shellPath, waitFor } from './helpers'
 
 describe('TerminalService (real tmux + node-pty)', () => {
   let tmux: Tmux
@@ -173,5 +173,46 @@ describe('TerminalService open state', () => {
     const byId = new Map((await relaunched.list()).map((t) => [t.id, t]))
     expect(byId.get(a.id)?.open).toBe(true)
     expect(byId.get(b.id)?.open).toBe(false)
+  })
+
+  it('clears a shell and leaves its prompt, so there is somewhere to type', async () => {
+    const dir2 = makeTempDir('seam-clear-')
+    await tmux.newSession({ id: 'clr', kind: 'shell', cwd: dir2, root: dir2, command: [shellPath('bash'), '--norc'], cols: 80, rows: 10 })
+    await waitFor(async () => (await tmux.capturePane('clr')).includes('$'))
+    for (const n of [1, 2, 3]) {
+      await tmux.sendKeys('clr', `echo keep-${n}`, { literal: true, enter: true })
+    }
+    await waitFor(async () => (await tmux.capturePane('clr')).includes('keep-3'))
+
+    // At a prompt: the shell is asked, so it draws the prompt again.
+    await tmux.clearPane('clr', { viaProgram: true })
+    await waitFor(async () => !(await tmux.capturePane('clr')).includes('keep-3'))
+    const after = (await tmux.capturePane('clr')).split('\n').filter((l) => l.trim())
+    expect(after).toHaveLength(1)
+    expect(after[0]).toContain('$')
+    expect((await tmux.position('clr')).history).toBe(0)
+    await tmux.killSession('clr')
+  })
+
+  it('clears a busy shell without typing into what is running', async () => {
+    const dir2 = makeTempDir('seam-clear-busy-')
+    const log = join(dir2, 'out.log')
+    writeFileSync(log, '')
+    await tmux.newSession({ id: 'busy', kind: 'shell', cwd: dir2, root: dir2, command: [shellPath('bash'), '--norc'], cols: 80, rows: 10 })
+    await waitFor(async () => (await tmux.capturePane('busy')).includes('$'))
+    await tmux.sendKeys('busy', `tail -f ${log}`, { literal: true, enter: true })
+    appendFileSync(log, 'before\n')
+    await waitFor(async () => (await tmux.capturePane('busy')).includes('before'))
+
+    await tmux.clearPane('busy', { viaProgram: false })
+    await waitFor(async () => !(await tmux.capturePane('busy')).includes('before'))
+
+    // The keystroke never reached tail, so its output is not corrupted.
+    appendFileSync(log, 'Error: after\n')
+    await waitFor(async () => (await tmux.capturePane('busy')).includes('Error: after'))
+    const screen = await tmux.capturePane('busy')
+    expect(screen).not.toContain('^L')
+    expect(screen).toContain('Error: after')
+    await tmux.killSession('busy')
   })
 })

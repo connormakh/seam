@@ -31,6 +31,8 @@ export interface TerminalServiceOptions {
    * each session gets its own MCP config and its own control-socket token.
    */
   claudeLaunch: (sessionId: string, root: string) => { command: string[]; env?: Record<string, string> }
+  /** Whether a command is running in a terminal, which decides how it clears. */
+  isBusy?: (id: string) => Promise<boolean>
   /** How to start an integrated shell for a terminal; tmux's default shell when absent. */
   shellLaunch?: (terminalId: string) => ShellLaunch
 }
@@ -261,9 +263,17 @@ export class TerminalService {
     }
   }
 
-  /** Wipe a pane, screen and scrollback, whatever is running in it. */
+  /**
+   * Wipe a pane, screen and scrollback.
+   *
+   * A shell sitting at a prompt is asked to clear itself, so it draws the
+   * prompt again and the pane is not left blank with nowhere to type. One
+   * that is mid-command has no prompt to redraw and would echo the keystroke
+   * into its output, so its screen is reset instead.
+   */
   async clear(id: string): Promise<void> {
-    await this.o.tmux.clearPane(id)
+    const busy = (await this.o.isBusy?.(id)) ?? false
+    await this.o.tmux.clearPane(id, { viaProgram: !busy })
   }
 
   /** Hide a shell from Claude, or show it again. */
