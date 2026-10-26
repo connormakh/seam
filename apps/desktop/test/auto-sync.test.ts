@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ControlServer, type Caller } from '../src/main/control/server'
@@ -195,6 +195,44 @@ describe('auto sync (real hook, real socket, real bash)', () => {
     await run('seq 1 4000; false')
     const context = JSON.parse(await runHook(hookPath, prompt(), env)).hookSpecificOutput.additionalContext as string
     expect(context.length).toBeLessThan(2500)
+  })
+
+  it('carries a running task\u2019s errors, and none of its chatter', async () => {
+    // A stand-in for a dev server: it never finishes, so the finished-command
+    // path never sees it, and the test decides exactly what it prints.
+    const log = join(dir, 'dev.log')
+    writeFileSync(log, '')
+    await tmux.sendKeys(shellId, `tail -f ${log}`, { literal: true, enter: true })
+    await waitFor(async () => (await tracker.latest(shellId))?.running === true)
+
+    appendFileSync(log, 'ready on :3000\ncompiled 42 modules in 180ms\n')
+    await waitFor(async () => (await tmux.capturePane(shellId)).includes('compiled 42 modules'))
+    // It is working, so there is nothing to say: progress is not trouble.
+    expect((await runHook(hookPath, prompt(), env)).trim()).toBe('')
+
+    appendFileSync(log, 'Error: Cannot find module "./missing"\n    at Object.<anonymous> (/app/x.js:4:11)\n')
+    await waitFor(async () => (await tmux.capturePane(shellId)).includes('Cannot find module'))
+
+    const context = JSON.parse(await runHook(hookPath, prompt(), env)).hookSpecificOutput.additionalContext as string
+    expect(context).toContain('Still running: $ tail -f')
+    expect(context).toContain('Cannot find module')
+    // The stack frame comes too: it is what says where.
+    expect(context).toContain('at Object.<anonymous> (/app/x.js:4:11)')
+    // The chatter does not.
+    expect(context).not.toContain('compiled 42 modules')
+    expect(context).not.toContain('ready on :3000')
+
+    // Said once. The same error is not repeated every turn from here on.
+    expect((await runHook(hookPath, prompt(), env)).trim()).toBe('')
+
+    appendFileSync(log, 'FAIL src/auth.test.ts\n')
+    await waitFor(async () => (await tmux.capturePane(shellId)).includes('FAIL src/auth'))
+    const later = JSON.parse(await runHook(hookPath, prompt(), env)).hookSpecificOutput.additionalContext as string
+    expect(later).toContain('FAIL src/auth.test.ts')
+    expect(later).not.toContain('Cannot find module')
+
+    await tmux.sendKeys(shellId, 'C-c')
+    await waitFor(async () => (await tracker.latest(shellId))?.running === false)
   })
 
   it('says nothing for a subagent, whose turn is not the pair’s', async () => {

@@ -257,6 +257,18 @@ export class Tmux {
     }
   }
 
+  /**
+   * Where the cursor is in the pane's whole history, and how much of that
+   * history is above the screen. Together they turn an absolute line number
+   * into the offset capturePane wants.
+   */
+  async position(id: string): Promise<{ history: number; cursor: number }> {
+    assertId(id)
+    const out = await this.run(['display-message', '-p', '-t', `=${id}:`, '#{history_size}␟#{cursor_y}'])
+    const [history, cursor] = out.trim().split(SEP)
+    return { history: Number(history) || 0, cursor: Number(cursor) || 0 }
+  }
+
   /** Hide a shell from Claude, or show it again. */
   async setPrivate(id: string, isPrivate: boolean): Promise<void> {
     assertId(id)

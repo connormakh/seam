@@ -17,6 +17,11 @@ import type { Tmux } from '../tmux/tmux'
  * What it costs is bounded on purpose. Only what is new since the last
  * delivery, a successful command collapsed to one line, 2 KB in total. A
  * quiet shell costs nothing at all, which is what makes it safe to leave on.
+ *
+ * A command that has not finished is handled differently, because a dev
+ * server never finishes and printing a thousand lines of it at Claude would
+ * be useless and expensive. Those are watched instead: only lines that look
+ * like something went wrong, only the ones printed since the last delivery.
  */
 
 export interface AutoSyncOptions {
@@ -35,10 +40,39 @@ export interface AutoSyncOptions {
 
 const CAP = 2048
 const FAILURE_LINES = 40
+/** Error lines carried out of one still-running command per delivery. */
+const LIVE_LINES = 12
+
+/**
+ * What counts as something going wrong in a process that is still running.
+ *
+ * Deliberately narrow. Everything matched here is sent to Claude unasked and
+ * paid for on every turn, so a pattern that also catches ordinary progress
+ * output would make a dev server expensive to leave running. Warnings are
+ * not errors and are left out for the same reason.
+ */
+const TROUBLE: RegExp[] = [
+  /\berrors?\b/i,
+  /\bfail(ed|ure|s)?\b/i,
+  /\bexception\b/i,
+  /\bpanic:/i,
+  /\bfatal\b/i,
+  /^\s*Traceback \(most recent call last\)/,
+  // Stack frames, which are the lines after the message that say where.
+  /^\s+at\s+\S+.*\(.*:\d+:\d+\)/,
+  /^\s+File ".*", line \d+/,
+  // tsc, and the shape most compilers print.
+  /\berror TS\d+\b/,
+  /^\S+:\d+:\d+:\s/
+]
+
+const looksLikeTrouble = (line: string): boolean => TROUBLE.some((p) => p.test(line))
 
 export class AutoSync {
   /** The last command id already told to a session, per shell. */
   private readonly delivered = new Map<string, Map<string, number>>()
+  /** How far into a still-running command's output a session has been read. */
+  private readonly watched = new Map<string, number>()
   private readonly off: Set<string>
 
   constructor(private readonly o: AutoSyncOptions) {
@@ -57,6 +91,9 @@ export class AutoSync {
 
   forget(sessionId: string): void {
     this.delivered.delete(sessionId)
+    for (const key of this.watched.keys()) {
+      if (key.startsWith(`${sessionId}\u241f`)) this.watched.delete(key)
+    }
     // Only what it was told to say about is remembered; a session that ended
     // is not coming back, so its entry would just accumulate.
     if (this.off.delete(sessionId)) this.o.onDisabledChanged?.([...this.off])
@@ -90,9 +127,26 @@ export class AutoSync {
         // again would be noise, and with run_in_shell it is most of them.
         (r) => r.id > since && r.endedAt !== null && r.actor === 'user'
       )
-      if (records.length > 0) seen.set(shell.id, records.at(-1)!.id)
-      if (fresh.length === 0) continue
-      blocks.push(this.describe(shell.title, fresh))
+      // A command still running is not "since last time": it is now, so it
+      // is reported while it runs rather than waiting for an end that may
+      // never come.
+      const running = records.at(-1)
+      const live =
+        running && running.endedAt === null && running.actor === 'user'
+          ? await this.trouble(caller.sessionId, shell.id, running)
+          : null
+
+      if (records.length > 0) {
+        const last = records.at(-1)!
+        // A running command is not marked delivered: it has not finished
+        // saying what it has to say.
+        seen.set(shell.id, last.endedAt === null ? last.id - 1 : last.id)
+      }
+      if (fresh.length === 0 && !live) continue
+      const parts: string[] = []
+      if (fresh.length > 0) parts.push(this.describe(shell.title, fresh))
+      if (live) parts.push(live)
+      blocks.push(parts.join('\n'))
     }
 
     if (blocks.length === 0) return null
@@ -106,6 +160,37 @@ export class AutoSync {
       text,
       '</shell-activity>'
     ].join('\n')
+  }
+
+  /**
+   * New lines from a running command that look like trouble, or null.
+   *
+   * Read straight from the pane rather than the record, because a record's
+   * output is only captured once the command ends, and the whole point here
+   * is the one that has not.
+   */
+  private async trouble(sessionId: string, shellId: string, record: CommandRecord): Promise<string | null> {
+    const key = `${sessionId}\u241f${shellId}`
+    try {
+      const { history, cursor } = await this.o.tmux.position(shellId)
+      const end = history + cursor
+      const from = this.watched.get(key) ?? record.startLine
+      if (end <= from) return null
+      this.watched.set(key, end)
+      const text = await this.o.tmux.capturePane(shellId, { start: from - history, end: end - 1 - history })
+      const hits = text.split('\n').filter((l) => l.trim() !== '' && looksLikeTrouble(l))
+      if (hits.length === 0) return null
+      const shown = hits.slice(-LIVE_LINES)
+      const more = hits.length > shown.length ? ` (${hits.length - shown.length} more)` : ''
+      return [
+        `Still running: $ ${maskSecrets(record.command).text}`,
+        `It has printed this since you last looked${more}:`,
+        ...shown.map((l) => maskSecrets(l).text)
+      ].join('\n')
+    } catch {
+      // The pane was cleared or has gone; nothing worth saying about it.
+      return null
+    }
   }
 
   private describe(shellTitle: string, records: CommandRecord[]): string {
