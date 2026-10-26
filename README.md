@@ -6,7 +6,7 @@ Seam is a macOS app that puts a Claude Code session and a shell side by side and
 
 ![Seam: Claude Code on the left, the shared shell on the right](docs/screenshot.png)
 
-Working name. macOS only, Apple Silicon, built from source.
+macOS only, Apple Silicon, built from source.
 
 ## Why
 

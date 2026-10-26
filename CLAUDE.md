@@ -1,6 +1,6 @@
 # Seam
 
-Seam (working name, final name undecided) is a macOS Electron app where each project's Claude Code session and a companion shell live side by side and share context in both directions. The goal is cohesion: the user can always do the work themselves in the shell or hand it to Claude, and switching between the two is one keystroke.
+Seam is a macOS Electron app where each project's Claude Code session and a companion shell live side by side and share context in both directions. The goal is cohesion: the user can always do the work themselves in the shell or hand it to Claude, and switching between the two is one keystroke.
 
 Design doc (goals, features, data model, risks): https://claude.ai/artifact/PAdnktf3DnACQBw1q9n3XP
 
@@ -31,7 +31,7 @@ Next, in order:
 1. **Milestone 2 is done** (hooks, status badges, attach mode, auto sync). What is left from Claude to shell: per-command gutter marks. The shell can mark its own commands with OSC 133 through tmux passthrough (verified), but xterm's decorations render at zero size here, most likely because `scrollback: 0` leaves no buffer for a marker to live in; it needs a different approach, or a small scrollback. For now "by Claude" is on the pane header for the latest command and in the Activity panel for all of them.
 2. ~~**Claude Code hooks**~~, installed per session with `--settings` (never in the user's repo or global settings): status badges (Working / Waiting for you / Idle) from `UserPromptSubmit`, `Notification`, `PermissionRequest`, `Stop`; **attach mode** (queue shell context, delivered via `UserPromptSubmit` `additionalContext`); **auto sync** (per-pair toggle, digest of new shell activity via `UserPromptSubmit` and `PostToolUse`, capped at 2 KB, errors only for long-running processes). Ignore turn events that carry `agent_id` (subagents). Use `last_assistant_message`, not the transcript file, which lags.
 3. **Session browser:** the workspace sidebar is in. Still to do: index `~/.claude/projects/*/*.jsonl` by project and cwd, FTS search, resume into a pair (`claude --resume <id>`, branch with `--fork-session`).
-4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks, final name. Packaging is in, unsigned; signing, notarization and auto-update wait on a certificate and a repo.
+4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks. Packaging is in, unsigned; signing, notarization and auto-update wait on a certificate and a repo.
 
 ## Commands
 
