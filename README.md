@@ -1,21 +1,99 @@
 # Seam
 
-Seam (working name) is a macOS app where each project's Claude Code sessions and your shells live in one workspace and share context in both directions:
+**One terminal that you and Claude Code both work in.**
 
-- **Paired workspaces.** A Claude session and its companion shell, side by side, rooted at the same directory, surviving app restarts.
-- **Shell to Claude.** Send a command, its exit code and output to Claude in one keystroke, or let auto sync keep Claude informed.
-- **Claude to shell.** Claude can see your live shells and run commands in them, behind an approval policy you control.
+Seam is a macOS app that puts a Claude Code session and a shell side by side and lets them share a terminal. Claude's commands run in *your* shell, in plain view, marked as its own. What you run is reported back to Claude without you asking. Either of you can pick up where the other left off.
 
-You can always do the work yourself or hand it to Claude; switching between the two is one keystroke.
+![Seam: Claude Code on the left, the shared shell on the right](docs/screenshot.png)
+
+Working name. macOS only, Apple Silicon, built from source.
+
+## Why
+
+Claude Code's own shell tool spawns a fresh process every time. It cannot see the dev server you have running, the virtualenv you activated, the `ssh` session you are in, or the variables you exported. So you end up copying output back and forth between two terminals that know nothing about each other.
+
+Seam makes it one terminal instead:
+
+- **Claude types into your shell.** `npm test` runs where you can watch it, lands in your history, and keeps whatever that shell is holding.
+- **Your shell talks back.** What you ran, what failed, and what a long-running process just printed reaches Claude without a keystroke.
+- **You can always tell who did what.** Every command Claude runs is marked, and every tool call is recorded.
+
+## What it does
+
+### The shared terminal
+
+By default Claude starts with its own Bash tool switched off, so the only way it can run anything is `run_in_shell` in the companion terminal. The shell pane marks those commands **by Claude**. No approval prompt for ordinary work — the shell is shared, not borrowed.
+
+A short denylist still asks, whatever the policy: `rm -rf`, `git push --force`, `sudo`, SQL `DROP`, and writes to `~/.ssh`. Nothing in ordinary work matches it.
+
+If you want it stricter, a project can be set to ask first, to an allowlist of prefixes, or to read-only.
+
+### Claude to shell
+
+A `seam` MCP server, wired in per session, gives Claude seven tools:
+
+| | |
+| --- | --- |
+| `list_shells` | what shells exist, and what each is doing |
+| `read_shell` | recent output, as it appears on screen |
+| `list_commands` | what has run, with exit codes and timings |
+| `read_command_output` | what one command printed |
+| `run_in_shell` | run a command and wait for it |
+| `send_keys` | `C-c`, `q`, a line of input for a prompt |
+| `wait_for_output` | wait for a pattern to appear |
+
+Shell output is wrapped in `<shell-output>` tags and the tool descriptions say it is data, never instructions.
+
+### Shell to Claude
+
+Four ways, from most deliberate to least:
+
+- **Send** (⌘⇧↩) pastes the last command and its output into Claude's prompt, unsent, so you can add a sentence.
+- **Attach** (⌘⌥↩) queues it for your next prompt instead. Works while Claude is mid-turn.
+- **Auto sync** tells Claude what you ran with no keystroke at all, at the start of each turn and between its tool calls.
+- **Claude asking**, with the read tools above.
+
+Auto sync is bounded on purpose: successes collapse to one line, failures carry their last 40 lines and a path to the rest, only what is new is sent, 2 KB a turn. **A quiet shell costs nothing**, which is what makes it safe to leave on.
+
+A command that has not finished is watched rather than waited for. Leave `npm run dev` running and Claude hears the build break — only the lines that look like trouble, never the progress chatter.
+
+### Around it
+
+- **Workspaces.** A sidebar groups sessions by the folder they were opened on. A workspace outlives everything running in it, and holds as many sessions as you want.
+- **Status.** A dot on each tab: working, waiting for you, idle.
+- **Activity** (⌘⇧A). Every tool call Claude has made, with times and outcomes.
+- **Private shells.** One click keeps a shell out of Claude's reach entirely: not listed, not readable, not writable. For the one holding credentials.
+- **Secrets masked** in everything sent to Claude, by pattern.
+
+## Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘T | New Claude + shell pair (pick a folder) |
+| ⌘⇧T | New shell |
+| ⌃` | Switch focus between Claude and the shell |
+| ⌘[ / ⌘] | Focus Claude / focus the shell |
+| ⌘⇧↩ | Send the shell's last command to Claude |
+| ⌘⌥↩ | Attach it to Claude's next prompt |
+| ⌘⇧A | Activity |
+| ⌘⌃S | Workspaces sidebar |
+| ⌘, | Settings |
+| ⌘W | Close tab (its terminals keep running) |
+| ⌘⇧W | End the tab and its terminals |
+| ⌘1–⌘9 | Switch tabs |
+
+Every shortcut lives in the application menu, so they are all discoverable under File, Shell and Window.
 
 ## Building it
 
-macOS, Node 22.12 or newer, and tmux (`brew install tmux`).
+macOS on Apple Silicon, Node 22.12+, pnpm 10, and [Claude Code](https://claude.com/claude-code) on your PATH.
 
 ```bash
 pnpm install
 pnpm dev
 ```
+
+tmux 3.3+ is needed (`brew install tmux`). Seam says so at startup if it cannot find one, and the same goes for `claude`, whose version it checks.
 
 To build an app bundle:
 
@@ -24,97 +102,47 @@ pnpm --filter @seam/desktop bundle:tmux   # optional: makes the app carry its ow
 pnpm --filter @seam/desktop package       # apps/desktop/release/Seam.dmg
 ```
 
-The build is unsigned, so the first launch needs right-click > Open, or
-`xattr -dr com.apple.quarantine` on the app. Signing and notarization need a
-paid Apple certificate; building from source does not.
+The build is **unsigned**, because signing and notarizing need a paid Apple certificate and building from source does not. macOS will refuse the first launch until you right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/Seam.app`.
 
-Without `bundle:tmux` the app uses whatever tmux is on your PATH, and says so
-at startup if there is none. It also expects the real `claude` binary on your
-PATH and checks its version when it starts.
+## How it works
+
+Three processes and one socket.
+
+- **tmux is the source of truth.** Every terminal is a session on a private tmux server, so closing a tab keeps it running and quitting the app does not kill anything. Seam's own metadata lives in tmux user options.
+- **Shell integration** writes a line when each command starts and ends — exit code, cwd, timing, and where its output is in the scrollback. It loads *after* your own startup files and changes nothing on disk outside Seam's data folder.
+- **A control socket** (mode 0600, per-session tokens) is the only way in from a process Seam does not own. The MCP server and the hooks both call it; neither decides anything itself.
+- **Claude Code is wired in by launch flags only** — `--mcp-config`, `--settings`, `--disallowedTools`. Your repo's `CLAUDE.md`, your global settings and your own hooks are never touched.
+
+## Security
+
+Running an agent in your real shell deserves a straight answer about what stops what.
+
+- **Shell output is untrusted.** It can contain anything a program printed, including text written to look like an instruction. Seam tags it as data; that reduces the risk but does not remove it, which is why the denylist exists.
+- **A session only reaches its own workspace.** Tokens are bound to the folder the pair was opened on; a session cannot touch another project's shells.
+- **Private shells are invisible**, including to `list_shells`.
+- **Everything is recorded.** The Activity panel is the answer to what Claude did, after the fact, rather than a prompt before it.
+- **Unsigned builds.** You are running code you built. Read it.
 
 ## Status
 
-**M0, terminal skeleton: done. Paired workspaces and Shell to Claude: in.**
+The terminal, both directions of context sharing, and packaging are in. 179 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
 
-- **Pairs:** Cmd+T picks a project folder and opens Claude Code on the left with a shell on the right, both in that folder, split by a draggable divider. Ctrl+` hops between them.
-- **Shell to Claude:** Seam shells (zsh, bash) report every command, its exit code and its output. The shell pane's header shows the last one; "Send to Claude" (or "Ask Claude" after a failure, or Cmd+Shift+Enter) pastes it into Claude's prompt without sending, secrets masked and long output cut to its tail, so you add a note and press Enter.
-- Terminal tabs rendered with xterm.js, each backed by a session on Seam's private tmux server.
-- Closing a tab keeps the terminal running in the background; quitting the app keeps everything running.
-- Relaunching restores the tabs that were open, screens intact. Background terminals can be reopened or ended from the titlebar menu.
+Not there yet:
 
-The Claude pane runs `claude` through your login shell, so it is found wherever you installed it. If it is missing, the pane says so; when Claude Code exits, the pane becomes a shell.
-
-Shell integration loads after your own startup files (zsh through a Seam-owned ZDOTDIR that sources yours, bash through `--init-file` that replays your login files) and changes nothing on disk outside Seam's data folder.
-
-Next: attach mode and auto sync for Shell to Claude, then Claude to shell.
-
-| Shortcut | Action |
-| --- | --- |
-| ⌘T | New Claude + shell pair (pick a folder) |
-| ⌘⇧T | New shell |
-| ⌃` | Switch focus between Claude and the shell |
-| ⌘⇧↩ | Send the shell's last command to Claude |
-| ⌘W | Close tab (its terminals keep running) |
-| ⌘⇧W | End the tab and its terminals |
-| ⌘1 to ⌘9 | Switch tabs |
-
-Shortcuts are defined in the application menu, so they also appear under File and Window.
-
-## Requirements
-
-- macOS (Apple Silicon), Node 22.12+, pnpm 10
-- tmux 3.3+ (`brew install tmux`). Seam will bundle its own in M5.
-
-`node-pty` ships an N-API prebuild for macOS, so nothing compiles on install and the same binary loads in Electron. A postinstall step marks its `spawn-helper` executable, which the prebuild omits.
-
-## Develop
-
-```bash
-pnpm install
-pnpm dev        # launch the app with hot reload
-pnpm test       # unit and integration tests (drive a real, throwaway tmux server)
-pnpm typecheck
-pnpm build
-```
-
-Seam's tmux server lives at `~/Library/Application Support/Seam/tmux/<name>.sock`, outside `/tmp` (which macOS cleans periodically). Dev builds use the name `seam-dev`; packaged builds use `seam`. Set `SEAM_TMUX_SOCKET` to use another name, and `SEAM_TMUX` to point at a specific tmux binary.
-
-To inspect the private server directly:
-
-```bash
-tmux -S ~/Library/Application\ Support/Seam/tmux/seam-dev.sock ls
-```
-
-### A stand-in for Claude Code
-
-Where Claude Code cannot sign in (CI, sandboxes), run new pairs with a stand-in that shows a prompt and echoes what is pasted:
-
-```bash
-SEAM_CLAUDE_COMMAND='["python3", "scripts/fake-claude.py"]' pnpm dev
-```
-
-### Headless smoke test
-
-`apps/desktop/scripts/smoke.sh '<js expression>'` builds the app, launches it, evaluates the expression in the renderer, prints the result as JSON and quits. Set `SEAM_SMOKE_SCREENSHOT=/path/out.png` to also capture the window. On Linux it runs under `xvfb-run`.
-
-### Building on Linux
-
-There is no Linux prebuild for `node-pty`, so it compiles from source. If `node-gyp` cannot download Node headers (offline or sandboxed), point it at the local Node install:
-
-```bash
-npm_config_nodedir="$(dirname "$(dirname "$(which node)")")" pnpm install
-```
+- **Session browser** — indexing `~/.claude/projects`, search, and resuming or branching a past session
+- **Per-command gutter marks** — the shell can mark its own commands, but xterm renders the decorations at zero size while tmux owns the scrollback
+- **Signing, notarization, auto-update** — all waiting on a certificate
+- **Windows and Linux** — the tmux and shell plumbing is portable; nothing else has been tried
 
 ## Layout
 
 ```text
 apps/desktop/
-  src/main/          Electron main: tmux wrapper, terminal service, IPC
-  src/preload/       typed bridge exposed as window.seam
-  src/renderer/      React UI, xterm.js tabs
-  src/shared/        IPC contract shared by all three
-  test/              vitest unit and integration tests
-packages/            shared packages (added as milestones need them)
+  src/main/        Electron main: tmux, terminals, control socket, MCP tools, hooks
+  src/preload/     typed bridge exposed as window.seam
+  src/renderer/    React UI, xterm.js, the panes and panels
+  src/shared/      the IPC contract all three share
+  test/            vitest; integration tests drive real tmux, zsh and bash
 ```
 
-See the design doc for architecture and milestones.
+`CLAUDE.md` holds the architecture notes and the gotchas worth knowing before changing anything.
