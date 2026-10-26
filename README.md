@@ -134,6 +134,13 @@ Not there yet:
 - **Signing, notarization, auto-update** — all waiting on a certificate
 - **Windows and Linux** — the tmux and shell plumbing is portable; nothing else has been tried
 
+## Contributing
+
+Issues and pull requests are welcome. `CLAUDE.md` has the architecture, the
+conventions and the gotchas worth reading before changing anything; the short
+version is small commits, a test with every bug fix, and integration tests
+against real tmux and real shells rather than mocks.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
