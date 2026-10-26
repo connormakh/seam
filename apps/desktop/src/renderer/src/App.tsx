@@ -311,6 +311,13 @@ export function App(): React.JSX.Element {
         case 'open-settings':
           setSettingsOpen((open) => !open)
           break
+        case 'clear-screen': {
+          const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
+          // Both halves: a pair is one thing to look at, so it is one thing
+          // to clear.
+          for (const m of unit?.members ?? []) void api().clear(m.id)
+          break
+        }
         case 'send-last': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           if (unit && isPair(unit)) void sendLast(unit)

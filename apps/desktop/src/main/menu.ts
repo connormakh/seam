@@ -142,6 +142,15 @@ export function installMenu(
     {
       label: 'View',
       submenu: [
+        {
+          id: 'clear-screen',
+          // Both panes of the pair, which is what "clear this" means when
+          // two of them are the one thing you are looking at.
+          label: 'Clear Screen',
+          accelerator: mac ? 'Cmd+K' : 'Ctrl+Shift+K',
+          click: () => send({ type: 'clear-screen' })
+        },
+        { type: 'separator' },
         ...(opts.isDev
           ? ([{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }] satisfies MenuItemConstructorOptions[])
           : []),

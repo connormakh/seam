@@ -132,6 +132,7 @@ const api: SeamApi = {
     kill: (id) => ipcRenderer.invoke(IPC.terminalKill, id),
     setOpen: (id, open) => ipcRenderer.invoke(IPC.terminalSetOpen, id, open),
     setPrivate: (id, isPrivate) => ipcRenderer.invoke(IPC.terminalSetPrivate, id, isPrivate),
+    clear: (id) => ipcRenderer.invoke(IPC.terminalClear, id),
     write: (id, data) => ipcRenderer.send(IPC.terminalWrite, id, data),
     resize: (id, size) => ipcRenderer.send(IPC.terminalResize, id, size),
     onData: (id, listener) => {

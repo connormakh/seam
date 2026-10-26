@@ -76,6 +76,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 | ⌘[ / ⌘] | Focus Claude / focus the shell |
 | ⌘⇧↩ | Send the shell's last command to Claude |
 | ⌘⌥↩ | Attach it to Claude's next prompt |
+| ⌘K | Clear both panes of the tab, screen and scrollback |
 | ⌘⇧A | Activity |
 | ⌘⌃S | Workspaces sidebar |
 | ⌘, | Settings (also the button at the bottom of the sidebar) |

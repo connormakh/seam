@@ -261,6 +261,11 @@ export class TerminalService {
     }
   }
 
+  /** Wipe a pane, screen and scrollback, whatever is running in it. */
+  async clear(id: string): Promise<void> {
+    await this.o.tmux.clearPane(id)
+  }
+
   /** Hide a shell from Claude, or show it again. */
   async setPrivate(id: string, isPrivate: boolean): Promise<void> {
     await this.o.tmux.setPrivate(id, isPrivate)

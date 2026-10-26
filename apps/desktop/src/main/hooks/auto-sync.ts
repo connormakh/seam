@@ -174,8 +174,18 @@ export class AutoSync {
     try {
       const { history, cursor } = await this.o.tmux.position(shellId)
       const end = history + cursor
-      const from = this.watched.get(key) ?? record.startLine
-      if (end <= from) return null
+      const watched = this.watched.get(key) ?? record.startLine
+      const from = watched > end ? 0 : watched
+      // Clearing a pane resets tmux's line numbering, so an offset from
+      // before it now points past the end. Read the cleared pane from its
+      // start rather than from here: everything on it was printed after the
+      // clear, and skipping a turn would lose whatever arrived in between.
+      // Sitting silently for the rest of the command is the worst way to
+      // fail, because there is nothing to see and nothing reported.
+      if (end <= from) {
+        this.watched.set(key, end)
+        return null
+      }
       this.watched.set(key, end)
       const text = await this.o.tmux.capturePane(shellId, { start: from - history, end: end - 1 - history })
       const hits = text.split('\n').filter((l) => l.trim() !== '' && looksLikeTrouble(l))

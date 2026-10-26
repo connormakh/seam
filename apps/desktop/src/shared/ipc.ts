@@ -17,6 +17,7 @@ export const IPC = {
   terminalKill: 'terminal:kill',
   terminalSetOpen: 'terminal:set-open',
   terminalSetPrivate: 'terminal:set-private',
+  terminalClear: 'terminal:clear',
   /** renderer -> main, fire and forget */
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
@@ -64,6 +65,8 @@ export type MenuCommand =
   | { type: 'toggle-activity' }
   | { type: 'toggle-sidebar' }
   | { type: 'open-settings' }
+  /** Wipe the visible screen and the scrollback of the active tab's panes. */
+  | { type: 'clear-screen' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
@@ -238,6 +241,7 @@ export interface TerminalApi {
   /** Remember whether the terminal has a tab, so relaunch restores the same tabs. */
   setOpen(id: string, open: boolean): Promise<void>
   setPrivate(id: string, isPrivate: boolean): Promise<TerminalInfo[]>
+  clear(id: string): Promise<void>
   write(id: string, data: string): void
   resize(id: string, size: TerminalSize): void
   onData(id: string, listener: (data: string) => void): () => void

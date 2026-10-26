@@ -269,6 +269,21 @@ export class Tmux {
     return { history: Number(history) || 0, cursor: Number(cursor) || 0 }
   }
 
+  /**
+   * Wipe a pane: the screen, then the scrollback behind it.
+   *
+   * `send-keys -R` resets the terminal state rather than sending anything to
+   * the program, which is the difference that matters. Sending C-l only
+   * clears when the foreground program handles it: a shell at a prompt does,
+   * a running `tail -f` does not, and then the control character is echoed
+   * into its output instead.
+   */
+  async clearPane(id: string): Promise<void> {
+    assertId(id)
+    await this.run(['send-keys', '-R', '-t', `=${id}:`])
+    await this.run(['clear-history', '-t', `=${id}:`])
+  }
+
   /** Hide a shell from Claude, or show it again. */
   async setPrivate(id: string, isPrivate: boolean): Promise<void> {
     assertId(id)

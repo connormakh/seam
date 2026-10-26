@@ -235,6 +235,30 @@ describe('auto sync (real hook, real socket, real bash)', () => {
     await waitFor(async () => (await tracker.latest(shellId))?.running === false)
   })
 
+  it('keeps watching a running task after the pane is cleared', async () => {
+    const log = join(dir, 'cleared.log')
+    writeFileSync(log, '')
+    await tmux.sendKeys(shellId, `tail -f ${log}`, { literal: true, enter: true })
+    await waitFor(async () => (await tracker.latest(shellId))?.running === true)
+    appendFileSync(log, 'Error: before the clear\n')
+    await waitFor(async () => (await tmux.capturePane(shellId)).includes('before the clear'))
+    expect(await runHook(hookPath, prompt(), env)).toContain('before the clear')
+
+    // What Cmd+K does: reset the screen, then drop the history behind it.
+    await tmux.clearPane(shellId)
+    await new Promise((r) => setTimeout(r, 300))
+
+    appendFileSync(log, 'Error: after the clear\n')
+    await waitFor(async () => (await tmux.capturePane(shellId)).includes('after the clear'))
+    const raw = await runHook(hookPath, prompt(), env)
+    const context = JSON.parse(raw).hookSpecificOutput.additionalContext as string
+    expect(context).toContain('after the clear')
+    expect(context).not.toContain('before the clear')
+
+    await tmux.sendKeys(shellId, 'C-c')
+    await waitFor(async () => (await tracker.latest(shellId))?.running === false)
+  })
+
   it('says nothing for a subagent, whose turn is not the pair’s', async () => {
     await run('echo from-a-subagent-turn')
     const out = await runHook(hookPath, { ...prompt(), agent_id: 'sub-1' }, env)

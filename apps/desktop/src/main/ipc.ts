@@ -68,6 +68,7 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
       }
     })
   )
+  ipcMain.handle(IPC.terminalClear, (_e, id: unknown) => requireTerminals(rt).clear(asId(id)))
   ipcMain.handle(IPC.sessionStatuses, async (): Promise<SessionStatus[]> => rt.hooks?.statusList() ?? [])
   ipcMain.handle(IPC.autoSyncGet, async (_e, id: unknown): Promise<boolean> =>
     typeof id === 'string' ? (rt.autoSync?.enabled(id) ?? false) : false
