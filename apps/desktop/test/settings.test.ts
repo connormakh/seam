@@ -64,4 +64,25 @@ describe('settings', () => {
     writeFileSync(path, '{ this is not json')
     expect(new SettingsStore(path).get()).toEqual(DEFAULTS)
   })
+
+  it('keeps a policy per workspace, over the default', () => {
+    const path = file('per-root.json')
+    writeFileSync(
+      path,
+      JSON.stringify({
+        policy: { mode: 'allow', allowPrefixes: [] },
+        policies: {
+          '/Users/me/work': { mode: 'ask', allowPrefixes: [] },
+          '/Users/me/toy': { mode: 'bogus', allowPrefixes: ['ls'] },
+          '': { mode: 'readonly', allowPrefixes: [] }
+        }
+      })
+    )
+    const saved = new SettingsStore(path).get()
+    expect(saved.policies['/Users/me/work']!.mode).toBe('ask')
+    // A bad mode falls back to the default, keeping the rest of that entry.
+    expect(saved.policies['/Users/me/toy']).toEqual({ mode: 'allow', allowPrefixes: ['ls'] })
+    // A root that is not a root is not an entry.
+    expect(saved.policies['']).toBeUndefined()
+  })
 })

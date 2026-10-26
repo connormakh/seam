@@ -8,6 +8,8 @@ const term = (id: string, o: Partial<TerminalInfo> = {}): TerminalInfo => ({
   title: id,
   cwd: '/',
   currentCommand: 'zsh',
+  private: false,
+  root: '/',
   createdAt: 0,
   attached: false,
   open: true,
@@ -133,5 +135,22 @@ describe('nextShellTitle', () => {
   it('picks the first free title', () => {
     expect(nextShellTitle([])).toBe('shell')
     expect(nextShellTitle(['shell', 'shell 3'])).toBe('shell 2')
+  })
+
+  it('takes fresh facts about a terminal without moving it', () => {
+    const shell = term('s1')
+    let state = tabsReducer(initialTabs, { type: 'restore', terminals: [{ ...shell, open: true }] })
+    const key = state.tabs[0]!.key
+    state = tabsReducer(state, { type: 'refresh', terminals: [{ ...shell, open: true, private: true }] })
+    expect(state.tabs[0]!.members[0]!.private).toBe(true)
+    // Still the same tab, still where it was.
+    expect(state.tabs[0]!.key).toBe(key)
+    expect(state.tabs).toHaveLength(1)
+  })
+
+  it('ignores a terminal it has never seen', () => {
+    const state = tabsReducer(initialTabs, { type: 'restore', terminals: [{ ...term('s1'), open: true }] })
+    const after = tabsReducer(state, { type: 'refresh', terminals: [term('elsewhere')] })
+    expect(after.tabs[0]!.members.map((m) => m.id)).toEqual(['s1'])
   })
 })

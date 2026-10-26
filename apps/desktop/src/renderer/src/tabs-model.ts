@@ -32,6 +32,8 @@ export type TabsAction =
   | { type: 'remove-unit'; key: string }
   | { type: 'remove-terminal'; id: string }
   | { type: 'set-background'; terminals: TerminalInfo[] }
+  /** Fresh facts about terminals already on screen, without regrouping them. */
+  | { type: 'refresh'; terminals: TerminalInfo[] }
   | { type: 'activate'; key: string }
   | { type: 'select-index'; index: number }
   | { type: 'remount'; id: string }
@@ -153,6 +155,14 @@ export function tabsReducer(state: TabsModel, action: TabsAction): TabsModel {
       const inTabs = new Set(state.tabs.flatMap((t) => t.members.map((m) => m.id)))
       const background = groupUnits(action.terminals).filter((u) => !u.members.some((m) => inTabs.has(m.id)))
       return { ...state, background }
+    }
+
+    case 'refresh': {
+      const byId = new Map(action.terminals.map((t) => [t.id, t]))
+      // Only what is already here is updated: a terminal that appeared since
+      // belongs to 'restore', which decides where it goes.
+      const swap = (u: Unit): Unit => ({ ...u, members: u.members.map((m) => byId.get(m.id) ?? m) })
+      return { ...state, tabs: state.tabs.map(swap), background: state.background.map(swap) }
     }
 
     case 'activate':

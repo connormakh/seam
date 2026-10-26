@@ -68,7 +68,9 @@ export interface RuntimeSettings {
   shellOnly: () => boolean
   /** Takes effect for the next pair: Claude Code reads the flag at launch. */
   setShellOnly: (value: boolean) => void
-  policy: () => PolicySettings
+  /** The policy for a workspace root, falling back to the default. */
+  policy: (root: string) => PolicySettings
+  setPolicy: (root: string, mode: PolicySettings['mode']) => void
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
@@ -81,7 +83,12 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   const settings: RuntimeSettings = {
     shellOnly: () => (override === undefined ? store.get().shellOnly : override !== '0'),
     setShellOnly: (value) => void store.update({ shellOnly: value }),
-    policy: () => store.get().policy
+    policy: (root) => store.get().policies[root] ?? store.get().policy,
+    setPolicy: (root, mode) => {
+      const saved = store.get()
+      const current = saved.policies[root] ?? saved.policy
+      void store.update({ policies: { ...saved.policies, [root]: { ...current, mode } } })
+    }
   }
 
   const binary = resolveTmuxBinary({
@@ -184,7 +191,6 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     homeDir: o.homeDir,
     approvals,
     audit,
-    // One setting until workspaces exist; the design doc puts it per workspace.
     policy: settings.policy
   })
   const autoSync = new AutoSync({

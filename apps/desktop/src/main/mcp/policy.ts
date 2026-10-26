@@ -12,7 +12,8 @@
  * `ask` is there for anyone who wants the stricter thing back.
  */
 
-export type PolicyMode = 'allow' | 'ask' | 'allowlist' | 'readonly'
+export type { PolicyMode } from '@shared/ipc'
+import type { PolicyMode } from '@shared/ipc'
 
 export interface PolicySettings {
   mode: PolicyMode

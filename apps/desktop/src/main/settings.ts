@@ -19,7 +19,10 @@ import { DEFAULT_POLICY, type PolicyMode, type PolicySettings } from './mcp/poli
 export interface SeamSettings {
   /** Claude runs its commands in the companion shell rather than its own Bash. */
   shellOnly: boolean
+  /** The default, for any workspace without one of its own. */
   policy: PolicySettings
+  /** Per workspace root, which is what Seam has instead of a workspace table. */
+  policies: Record<string, PolicySettings>
   /** Claude sessions the user turned auto sync off for. */
   autoSyncOff: string[]
 }
@@ -27,6 +30,7 @@ export interface SeamSettings {
 export const DEFAULTS: SeamSettings = {
   shellOnly: true,
   policy: DEFAULT_POLICY,
+  policies: {},
   autoSyncOff: []
 }
 
@@ -37,14 +41,28 @@ function asStrings(value: unknown): string[] | null {
 }
 
 /** Take what is usable and leave the rest at its default. */
+function parsePolicy(raw: unknown, fallback: PolicySettings): PolicySettings {
+  const o = (raw as Record<string, unknown> | undefined) ?? {}
+  const mode = MODES.includes(o['mode'] as PolicyMode) ? (o['mode'] as PolicyMode) : fallback.mode
+  return { mode, allowPrefixes: asStrings(o['allowPrefixes']) ?? [] }
+}
+
 function parse(raw: unknown): SeamSettings {
   if (typeof raw !== 'object' || raw === null) return { ...DEFAULTS }
   const o = raw as Record<string, unknown>
-  const policyRaw = (o['policy'] as Record<string, unknown> | undefined) ?? {}
-  const mode = MODES.includes(policyRaw['mode'] as PolicyMode) ? (policyRaw['mode'] as PolicyMode) : DEFAULTS.policy.mode
+  const policy = parsePolicy(o['policy'], DEFAULTS.policy)
+  const perRoot = (o['policies'] as Record<string, unknown> | undefined) ?? {}
+  const policies: Record<string, PolicySettings> = {}
+  if (typeof perRoot === 'object' && perRoot !== null) {
+    for (const [root, value] of Object.entries(perRoot)) {
+      // An entry that says nothing usable is the same as not being there.
+      if (root) policies[root] = parsePolicy(value, policy)
+    }
+  }
   return {
     shellOnly: typeof o['shellOnly'] === 'boolean' ? o['shellOnly'] : DEFAULTS.shellOnly,
-    policy: { mode, allowPrefixes: asStrings(policyRaw['allowPrefixes']) ?? [] },
+    policy,
+    policies,
     autoSyncOff: asStrings(o['autoSyncOff']) ?? []
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { AuditEntry } from '@shared/ipc'
+import type { AuditEntry, PolicyMode } from '@shared/ipc'
 
 interface Props {
   entries: AuditEntry[]
@@ -7,6 +7,9 @@ interface Props {
   sessionId: string | null
   autoSync: boolean
   onAutoSync(on: boolean): void
+  /** The focused pair's workspace, and what Claude may run in it. */
+  policy: PolicyMode
+  onPolicy(mode: PolicyMode): void
   onClose(): void
 }
 
@@ -22,7 +25,15 @@ function clock(at: number): string {
  * question "what has it been doing in there" is answered. It reads bottom-up
  * like the terminals it describes: newest last, and it follows.
  */
-export function ActivityPanel({ entries, sessionId, autoSync, onAutoSync, onClose }: Props): React.JSX.Element {
+export function ActivityPanel({
+  entries,
+  sessionId,
+  autoSync,
+  onAutoSync,
+  policy,
+  onPolicy,
+  onClose
+}: Props): React.JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -62,6 +73,20 @@ export function ActivityPanel({ entries, sessionId, autoSync, onAutoSync, onClos
           />
           auto sync
         </label>
+        {/* Allow is the point of a shared shell; the rest are here for
+            anyone who wants the stricter thing back, per project. */}
+        <select
+          className="activity-policy"
+          value={policy}
+          disabled={!sessionId}
+          title="What Claude may run in this project's shells"
+          onChange={(e) => onPolicy(e.currentTarget.value as PolicyMode)}
+        >
+          <option value="allow">run freely</option>
+          <option value="ask">ask first</option>
+          <option value="allowlist">allowlist only</option>
+          <option value="readonly">read only</option>
+        </select>
         <button className="activity-close" onClick={onClose} title="Close (Esc)" aria-label="Close activity">
           ×
         </button>

@@ -23,8 +23,8 @@ export interface ToolContext {
   /** Absent while the app has no approval UI: the write tools then refuse. */
   approvals?: Approvals
   audit?: AuditLog
-  /** Per workspace in the design; one setting until workspaces exist. */
-  policy?: () => PolicySettings
+  /** Per workspace, which is the pair's folder until there is a workspace table. */
+  policy?: (root: string) => PolicySettings
   /** Overridable so tests do not wait a minute to prove a timeout. */
   pollMs?: number
 }
@@ -296,7 +296,7 @@ export class Tools {
     command: string,
     opts: { allowRemembering: boolean }
   ): Promise<void> {
-    const policy = this.o.policy?.() ?? DEFAULT_POLICY
+    const policy = this.o.policy?.(caller.root) ?? DEFAULT_POLICY
     const allowed = opts.allowRemembering ? [...(this.sessionAllowed.get(caller.sessionId) ?? [])] : []
     const decision = decide(command, policy, allowed)
 

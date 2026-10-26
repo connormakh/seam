@@ -16,6 +16,7 @@ export const IPC = {
   terminalDetach: 'terminal:detach',
   terminalKill: 'terminal:kill',
   terminalSetOpen: 'terminal:set-open',
+  terminalSetPrivate: 'terminal:set-private',
   /** renderer -> main, fire and forget */
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
@@ -42,7 +43,9 @@ export const IPC = {
   attachQueueChanged: 'attach:changed',
   attachClear: 'attach:clear',
   autoSyncSet: 'autosync:set',
-  autoSyncGet: 'autosync:get'
+  autoSyncGet: 'autosync:get',
+  policyGet: 'policy:get',
+  policySet: 'policy:set'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -82,6 +85,10 @@ export interface TerminalInfo {
   open: boolean
   /** The other half of a Claude + shell pair, or null for a standalone terminal. */
   pairId: string | null
+  /** Hidden from Claude entirely: not listed, not readable, not writable. */
+  private: boolean
+  /** The folder the pair was opened on; what policy and scope are keyed by. */
+  root: string
 }
 
 /**
@@ -121,6 +128,9 @@ export interface ApprovalRequest {
 }
 
 export type ApprovalDecision = 'approve' | 'approve-similar' | 'deny'
+
+/** What Claude may run in a workspace's shells without being asked. */
+export type PolicyMode = 'allow' | 'ask' | 'allowlist' | 'readonly'
 
 /** One line of the record of what Claude asked for and what happened. */
 export interface AuditEntry {
@@ -197,6 +207,7 @@ export interface TerminalApi {
   kill(id: string): Promise<void>
   /** Remember whether the terminal has a tab, so relaunch restores the same tabs. */
   setOpen(id: string, open: boolean): Promise<void>
+  setPrivate(id: string, isPrivate: boolean): Promise<TerminalInfo[]>
   write(id: string, data: string): void
   resize(id: string, size: TerminalSize): void
   onData(id: string, listener: (data: string) => void): () => void
@@ -248,6 +259,10 @@ export interface SeamApi {
   autoSync: {
     get: (sessionId: string) => Promise<boolean>
     set: (sessionId: string, on: boolean) => void
+  }
+  policy: {
+    get: (root: string) => Promise<PolicyMode>
+    set: (root: string, mode: PolicyMode) => void
   }
   audit: {
     list: () => Promise<AuditEntry[]>

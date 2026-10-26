@@ -6,6 +6,7 @@ import {
   type ApprovalRequest,
   type AuditEntry,
   type SendContextResult,
+  type TerminalInfo,
   type SessionStatus
 } from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
@@ -34,6 +35,22 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
   // card lives in main: it must outlive the view it is drawn on.
   ipcMain.handle(IPC.approvalsOpen, async (): Promise<ApprovalRequest[]> => rt.approvals?.open() ?? [])
   ipcMain.handle(IPC.auditList, async (): Promise<AuditEntry[]> => rt.audit?.list() ?? [])
+  ipcMain.handle(IPC.terminalSetPrivate, async (_e, id: unknown, isPrivate: unknown): Promise<TerminalInfo[]> => {
+    const terminals = requireTerminals(rt)
+    await terminals.setPrivate(asId(id), isPrivate === true)
+    return terminals.list()
+  })
+  ipcMain.handle(IPC.policyGet, async (_e, root: unknown): Promise<string> =>
+    typeof root === 'string' ? rt.settings.policy(root).mode : 'allow'
+  )
+  ipcMain.on(IPC.policySet, (_e, root: unknown, mode: unknown) =>
+    quietly(() => {
+      const modes = ['allow', 'ask', 'allowlist', 'readonly']
+      if (typeof root === 'string' && typeof mode === 'string' && modes.includes(mode)) {
+        rt.settings.setPolicy(root, mode as 'allow')
+      }
+    })
+  )
   ipcMain.handle(IPC.sessionStatuses, async (): Promise<SessionStatus[]> => rt.hooks?.statusList() ?? [])
   ipcMain.handle(IPC.autoSyncGet, async (_e, id: unknown): Promise<boolean> =>
     typeof id === 'string' ? (rt.autoSync?.enabled(id) ?? false) : false

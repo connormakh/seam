@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AppInfo, ApprovalDecision, ApprovalRequest, AuditEntry, CommandSummary, SessionStatus } from '@shared/ipc'
+import type {
+  AppInfo,
+  ApprovalDecision,
+  ApprovalRequest,
+  AuditEntry,
+  CommandSummary,
+  PolicyMode,
+  SessionStatus
+} from '@shared/ipc'
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { TabBar } from './TabBar'
@@ -24,6 +32,7 @@ export function App(): React.JSX.Element {
   const [activityOpen, setActivityOpen] = useState(false)
   const [statuses, setStatuses] = useState<Record<string, SessionStatus>>({})
   const [autoSyncOn, setAutoSyncOn] = useState(true)
+  const [policy, setPolicy] = useState<PolicyMode>('allow')
   const [attached, setAttached] = useState<Record<string, number>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
@@ -281,10 +290,15 @@ export function App(): React.JSX.Element {
   // The switch belongs to whichever pair is in front, so it follows the tab.
   const focusedClaudeId =
     tabs.find((u) => u.key === activeKey)?.members.find((m) => m.kind === 'claude')?.id ?? null
+  const focusedRoot = tabs.find((u) => u.key === activeKey)?.members[0]?.root ?? null
   useEffect(() => {
     if (!focusedClaudeId) return
     void window.seam.autoSync.get(focusedClaudeId).then(setAutoSyncOn)
   }, [focusedClaudeId])
+  useEffect(() => {
+    if (!focusedRoot) return
+    void window.seam.policy.get(focusedRoot).then(setPolicy)
+  }, [focusedRoot])
   const tmuxMissing = info !== null && info.tmux === null
 
   return (
@@ -329,6 +343,12 @@ export function App(): React.JSX.Element {
             window.seam.autoSync.set(focusedClaudeId, on)
             setAutoSyncOn(on)
           }}
+          policy={policy}
+          onPolicy={(mode) => {
+            if (!focusedRoot) return
+            window.seam.policy.set(focusedRoot, mode)
+            setPolicy(mode)
+          }}
           onClose={() => setActivityOpen(false)}
         />
       )}
@@ -346,6 +366,9 @@ export function App(): React.JSX.Element {
             onSend={(unit) => void sendLast(unit)}
             onDecide={decideApproval}
             onClearAttached={(id) => window.seam.attach.clear(id)}
+            onSetPrivate={(id, isPrivate) => {
+              void window.seam.terminals.setPrivate(id, isPrivate).then((list) => dispatch({ type: 'refresh', terminals: list }))
+            }}
           />
         ))}
 

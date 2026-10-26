@@ -100,6 +100,10 @@ const api: SeamApi = {
     get: (sessionId) => ipcRenderer.invoke(IPC.autoSyncGet, sessionId),
     set: (sessionId, on) => ipcRenderer.send(IPC.autoSyncSet, sessionId, on)
   },
+  policy: {
+    get: (root) => ipcRenderer.invoke(IPC.policyGet, root),
+    set: (root, mode) => ipcRenderer.send(IPC.policySet, root, mode)
+  },
   audit: {
     list: () => ipcRenderer.invoke(IPC.auditList),
     onAppended: (listener) => {
@@ -119,6 +123,7 @@ const api: SeamApi = {
     detach: (id) => ipcRenderer.invoke(IPC.terminalDetach, id),
     kill: (id) => ipcRenderer.invoke(IPC.terminalKill, id),
     setOpen: (id, open) => ipcRenderer.invoke(IPC.terminalSetOpen, id, open),
+    setPrivate: (id, isPrivate) => ipcRenderer.invoke(IPC.terminalSetPrivate, id, isPrivate),
     write: (id, data) => ipcRenderer.send(IPC.terminalWrite, id, data),
     resize: (id, size) => ipcRenderer.send(IPC.terminalResize, id, size),
     onData: (id, listener) => {

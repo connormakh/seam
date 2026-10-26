@@ -18,6 +18,7 @@ interface Props {
   onSend(unit: Unit): void
   onDecide(id: string, decision: ApprovalDecision): void
   onClearAttached(sessionId: string): void
+  onSetPrivate(id: string, isPrivate: boolean): void
 }
 
 const MIN_RATIO = 0.2
@@ -52,7 +53,8 @@ export function UnitView({
   onFocus,
   onSend,
   onDecide,
-  onClearAttached
+  onClearAttached,
+  onSetPrivate
 }: Props): React.JSX.Element {
   const [ratio, setRatio] = useState(() => readRatio(unit.key))
   const [dragging, setDragging] = useState(false)
@@ -90,7 +92,23 @@ export function UnitView({
         {/* A shell's last command knows where it ran; that beats where the shell started. */}
         <span className="pane-path">{shortPath(latest[m.id]?.cwd ?? m.cwd)}</span>
         {m.kind === 'shell' && (
-          <CommandStatus latest={latest[m.id]} {...(isPair(unit) ? { onSend: () => onSend(unit) } : {})} />
+          <>
+            {/* The one way to keep a shell out of Claude's reach: a shell
+                holding credentials is nobody's business but the user's. */}
+            <button
+              className={`pane-lock${m.private ? ' pane-lock-on' : ''}`}
+              aria-pressed={m.private}
+              title={
+                m.private
+                  ? 'Private: Claude cannot see or touch this shell. Click to share it.'
+                  : 'Shared with Claude. Click to make it private.'
+              }
+              onClick={() => onSetPrivate(m.id, !m.private)}
+            >
+              {m.private ? 'private' : 'shared'}
+            </button>
+            <CommandStatus latest={latest[m.id]} {...(isPair(unit) ? { onSend: () => onSend(unit) } : {})} />
+          </>
         )}
         {/* Waiting to go with the next prompt, with a way to change your mind. */}
         {m.kind === 'claude' && (attached[m.id] ?? 0) > 0 && (

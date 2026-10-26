@@ -255,7 +255,14 @@ export class TerminalService {
       createdAt: s.createdAt,
       attached: this.attachments.has(s.id),
       open: s.open,
-      pairId: s.pairId
+      pairId: s.pairId,
+      private: s.private,
+      root: s.root
     }
+  }
+
+  /** Hide a shell from Claude, or show it again. */
+  async setPrivate(id: string, isPrivate: boolean): Promise<void> {
+    await this.o.tmux.setPrivate(id, isPrivate)
   }
 }
