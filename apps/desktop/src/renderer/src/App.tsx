@@ -313,9 +313,10 @@ export function App(): React.JSX.Element {
           break
         case 'clear-screen': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
-          // Both halves: a pair is one thing to look at, so it is one thing
-          // to clear.
-          for (const m of unit?.members ?? []) void api().clear(m.id)
+          // The shell only. Claude's pane is a transcript you are reading,
+          // not a screen you are done with, and clearing it loses what it
+          // said while leaving Claude still holding it.
+          for (const m of unit?.members ?? []) if (m.kind === 'shell') void api().clear(m.id)
           break
         }
         case 'send-last': {

@@ -144,9 +144,7 @@ export function installMenu(
       submenu: [
         {
           id: 'clear-screen',
-          // Both panes of the pair, which is what "clear this" means when
-          // two of them are the one thing you are looking at.
-          label: 'Clear Screen',
+          label: 'Clear Shell',
           accelerator: mac ? 'Cmd+K' : 'Ctrl+Shift+K',
           click: () => send({ type: 'clear-screen' })
         },
