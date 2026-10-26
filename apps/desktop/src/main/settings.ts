@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import type { Workspace } from '@shared/ipc'
 import { DEFAULT_POLICY, type PolicyMode, type PolicySettings } from './mcp/policy'
 
 /**
@@ -25,13 +26,20 @@ export interface SeamSettings {
   policies: Record<string, PolicySettings>
   /** Claude sessions the user turned auto sync off for. */
   autoSyncOff: string[]
+  /**
+   * Folders the user has worked in, newest first. Kept so a workspace is
+   * still there once its last terminal has gone: closing everything in a
+   * project should not be the same as never having opened it.
+   */
+  workspaces: Workspace[]
 }
 
 export const DEFAULTS: SeamSettings = {
   shellOnly: true,
   policy: DEFAULT_POLICY,
   policies: {},
-  autoSyncOff: []
+  autoSyncOff: [],
+  workspaces: []
 }
 
 const MODES: PolicyMode[] = ['allow', 'ask', 'allowlist', 'readonly']
@@ -45,6 +53,22 @@ function parsePolicy(raw: unknown, fallback: PolicySettings): PolicySettings {
   const o = (raw as Record<string, unknown> | undefined) ?? {}
   const mode = MODES.includes(o['mode'] as PolicyMode) ? (o['mode'] as PolicyMode) : fallback.mode
   return { mode, allowPrefixes: asStrings(o['allowPrefixes']) ?? [] }
+}
+
+function parseWorkspaces(raw: unknown): Workspace[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: Workspace[] = []
+  for (const value of raw) {
+    const o = value as Record<string, unknown> | null
+    const root = typeof o?.['root'] === 'string' ? o['root'] : ''
+    // A root is the key, so one without one is not a workspace, and the
+    // first of a duplicate pair wins rather than both surviving.
+    if (!root || seen.has(root)) continue
+    seen.add(root)
+    out.push({ root, name: typeof o?.['name'] === 'string' && o['name'] ? o['name'] : basename(root) || root })
+  }
+  return out
 }
 
 function parse(raw: unknown): SeamSettings {
@@ -63,7 +87,8 @@ function parse(raw: unknown): SeamSettings {
     shellOnly: typeof o['shellOnly'] === 'boolean' ? o['shellOnly'] : DEFAULTS.shellOnly,
     policy,
     policies,
-    autoSyncOff: asStrings(o['autoSyncOff']) ?? []
+    autoSyncOff: asStrings(o['autoSyncOff']) ?? [],
+    workspaces: parseWorkspaces(o['workspaces'])
   }
 }
 
@@ -76,6 +101,19 @@ export class SettingsStore {
 
   get(): SeamSettings {
     return this.current
+  }
+
+  /** Note that a folder is being worked in, newest first. */
+  rememberWorkspace(root: string, name?: string): Workspace[] {
+    if (!root) return this.current.workspaces
+    const rest = this.current.workspaces.filter((w) => w.root !== root)
+    const existing = this.current.workspaces.find((w) => w.root === root)
+    const workspaces = [{ root, name: name ?? existing?.name ?? basename(root) ?? root }, ...rest]
+    return this.update({ workspaces }).workspaces
+  }
+
+  forgetWorkspace(root: string): Workspace[] {
+    return this.update({ workspaces: this.current.workspaces.filter((w) => w.root !== root) }).workspaces
   }
 
   /** Change some of it and write the lot. Returns what the settings now are. */

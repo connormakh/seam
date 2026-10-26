@@ -95,6 +95,12 @@ export function installMenu(
           click: () => send({ type: 'attach-last' })
         },
         {
+          id: 'toggle-sidebar',
+          label: 'Workspaces',
+          accelerator: mac ? 'Cmd+Ctrl+S' : 'Ctrl+Shift+S',
+          click: () => send({ type: 'toggle-sidebar' })
+        },
+        {
           id: 'toggle-activity',
           label: 'Activity',
           accelerator: key('A', 'Shift+'),

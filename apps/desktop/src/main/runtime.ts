@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node-pty'
-import { IPC } from '@shared/ipc'
+import { IPC, type Workspace } from '@shared/ipc'
 import { tmpdir } from 'node:os'
 import { ContextSender } from './context/send'
 import { adoptRunningSessions } from './control/adopt'
@@ -71,6 +71,10 @@ export interface RuntimeSettings {
   /** The policy for a workspace root, falling back to the default. */
   policy: (root: string) => PolicySettings
   setPolicy: (root: string, mode: PolicySettings['mode']) => void
+  /** Folders worked in, newest first; they outlive their terminals. */
+  workspaces: () => Workspace[]
+  rememberWorkspace: (root: string, name?: string) => Workspace[]
+  forgetWorkspace: (root: string) => Workspace[]
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
@@ -84,6 +88,9 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     shellOnly: () => (override === undefined ? store.get().shellOnly : override !== '0'),
     setShellOnly: (value) => void store.update({ shellOnly: value }),
     policy: (root) => store.get().policies[root] ?? store.get().policy,
+    workspaces: () => store.get().workspaces,
+    rememberWorkspace: (root, name) => store.rememberWorkspace(root, name),
+    forgetWorkspace: (root) => store.forgetWorkspace(root),
     setPolicy: (root, mode) => {
       const saved = store.get()
       const current = saved.policies[root] ?? saved.policy

@@ -7,7 +7,8 @@ import {
   type AuditEntry,
   type SendContextResult,
   type TerminalInfo,
-  type SessionStatus
+  type SessionStatus,
+  type Workspace
 } from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
 import type { Runtime } from './runtime'
@@ -40,6 +41,10 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     await terminals.setPrivate(asId(id), isPrivate === true)
     return terminals.list()
   })
+  ipcMain.handle(IPC.workspaceList, async (): Promise<Workspace[]> => rt.settings.workspaces())
+  ipcMain.handle(IPC.workspaceForget, async (_e, root: unknown): Promise<Workspace[]> =>
+    typeof root === 'string' ? rt.settings.forgetWorkspace(root) : rt.settings.workspaces()
+  )
   ipcMain.handle(IPC.policyGet, async (_e, root: unknown): Promise<string> =>
     typeof root === 'string' ? rt.settings.policy(root).mode : 'allow'
   )
@@ -118,9 +123,14 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
 
   ipcMain.handle(IPC.terminalList, () => (rt.terminals ? rt.terminals.list() : []))
   ipcMain.handle(IPC.terminalCreate, (_e, opts: unknown) => requireTerminals(rt).create(asCreateOptions(opts)))
-  ipcMain.handle(IPC.terminalCreatePair, (_e, opts: unknown) =>
-    requireTerminals(rt).createPair(asCreatePairOptions(opts))
-  )
+  ipcMain.handle(IPC.terminalCreatePair, async (_e, opts: unknown) => {
+    const options = asCreatePairOptions(opts)
+    const pair = await requireTerminals(rt).createPair(options)
+    // Opening a pair on a folder is what makes it a workspace; there is no
+    // separate step, because there is nothing else the user would mean.
+    rt.settings.rememberWorkspace(options.cwd)
+    return pair
+  })
   ipcMain.handle(IPC.terminalAttach, (_e, id: unknown, size: unknown) =>
     requireTerminals(rt).attach(asId(id), asSize(size))
   )

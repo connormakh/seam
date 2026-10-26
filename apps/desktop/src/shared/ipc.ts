@@ -45,7 +45,9 @@ export const IPC = {
   autoSyncSet: 'autosync:set',
   autoSyncGet: 'autosync:get',
   policyGet: 'policy:get',
-  policySet: 'policy:set'
+  policySet: 'policy:set',
+  workspaceList: 'workspace:list',
+  workspaceForget: 'workspace:forget'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -58,6 +60,7 @@ export type MenuCommand =
   | { type: 'send-last' }
   | { type: 'attach-last' }
   | { type: 'toggle-activity' }
+  | { type: 'toggle-sidebar' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
@@ -130,6 +133,12 @@ export interface ApprovalRequest {
 }
 
 export type ApprovalDecision = 'approve' | 'approve-similar' | 'deny'
+
+/** A folder the user works in. Its root is its identity. */
+export interface Workspace {
+  root: string
+  name: string
+}
 
 /** What Claude may run in a workspace's shells without being asked. */
 export type PolicyMode = 'allow' | 'ask' | 'allowlist' | 'readonly'
@@ -265,6 +274,10 @@ export interface SeamApi {
   policy: {
     get: (root: string) => Promise<PolicyMode>
     set: (root: string, mode: PolicyMode) => void
+  }
+  workspaces: {
+    list: () => Promise<Workspace[]>
+    forget: (root: string) => Promise<Workspace[]>
   }
   audit: {
     list: () => Promise<AuditEntry[]>

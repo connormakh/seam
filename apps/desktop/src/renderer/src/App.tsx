@@ -6,12 +6,14 @@ import type {
   AuditEntry,
   CommandSummary,
   PolicyMode,
-  SessionStatus
+  SessionStatus,
+  Workspace
 } from '@shared/ipc'
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
+import { Sidebar } from './Sidebar'
 import { TabBar } from './TabBar'
-import { initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
+import { groupByWorkspace, initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
 import { UnitView } from './UnitView'
 
 const api = (): typeof window.seam.terminals => window.seam.terminals
@@ -33,6 +35,8 @@ export function App(): React.JSX.Element {
   const [statuses, setStatuses] = useState<Record<string, SessionStatus>>({})
   const [autoSyncOn, setAutoSyncOn] = useState(true)
   const [policy, setPolicy] = useState<PolicyMode>('allow')
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [attached, setAttached] = useState<Record<string, number>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
@@ -166,17 +170,37 @@ export function App(): React.JSX.Element {
     [...modelRef.current.tabs, ...modelRef.current.background].find((u) => u.key === key)?.members ?? []
 
   /** Claude Code and a shell, side by side, in a folder the user picks. */
-  const newPair = useCallback(async () => {
+  /** A pair in a folder, remembered as a workspace by the time it returns. */
+  const openPair = useCallback(async (cwd: string, title?: string) => {
     try {
-      const cwd = await window.seam.pickFolder()
-      if (!cwd) return
-      const { claude, shell } = await api().createPair({ cwd })
+      const { claude, shell } = await api().createPair(title ? { cwd, title } : { cwd })
       dispatch({ type: 'add', members: [claude, shell] })
+      setWorkspaces(await window.seam.workspaces.list())
       setError(null)
     } catch (err) {
       setError(String(err))
     }
   }, [])
+
+  const newPair = useCallback(async () => {
+    const cwd = await window.seam.pickFolder()
+    if (cwd) await openPair(cwd)
+  }, [openPair])
+
+  /**
+   * Another session in a workspace that already has one. Numbered, because
+   * two tabs with the same folder name tell you nothing about which is which.
+   */
+  const newSessionIn = useCallback(
+    async (root: string) => {
+      const name = root.split('/').filter(Boolean).at(-1) ?? root
+      const here = modelRef.current.tabs
+        .concat(modelRef.current.background)
+        .filter((u) => u.members.some((m) => m.root === root)).length
+      await openPair(root, here > 0 ? `${name} ${here + 1}` : undefined)
+    },
+    [openPair]
+  )
 
   const newShell = useCallback(async () => {
     const m = modelRef.current
@@ -276,6 +300,9 @@ export function App(): React.JSX.Element {
         case 'toggle-activity':
           setActivityOpen((open) => !open)
           break
+        case 'toggle-sidebar':
+          setSidebarOpen((open) => !open)
+          break
         case 'send-last': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           if (unit && isPair(unit)) void sendLast(unit)
@@ -306,10 +333,13 @@ export function App(): React.JSX.Element {
     if (!focusedRoot) return
     void window.seam.policy.get(focusedRoot).then(setPolicy)
   }, [focusedRoot])
+  useEffect(() => {
+    void window.seam.workspaces.list().then(setWorkspaces)
+  }, [])
   const tmuxMissing = info !== null && info.tmux === null
 
   return (
-    <div className={`app${activityOpen ? ' app-with-activity' : ''}`}>
+    <div className={`app${activityOpen ? ' app-with-activity' : ''}${sidebarOpen ? ' app-with-sidebar' : ''}`}>
       <header className="titlebar">
         <span className="titlebar-name">Seam</span>
         {tabs.length > 0 && (
@@ -357,6 +387,19 @@ export function App(): React.JSX.Element {
             setPolicy(mode)
           }}
           onClose={() => setActivityOpen(false)}
+        />
+      )}
+
+      {sidebarOpen && (
+        <Sidebar
+          groups={groupByWorkspace(model, workspaces)}
+          activeKey={activeKey}
+          statuses={statuses}
+          onSelect={(unit, background) =>
+            dispatch(background ? { type: 'open-from-background', key: unit.key } : { type: 'activate', key: unit.key })
+          }
+          onNewSession={(root) => void newSessionIn(root)}
+          onForget={(root) => void window.seam.workspaces.forget(root).then(setWorkspaces)}
         />
       )}
 

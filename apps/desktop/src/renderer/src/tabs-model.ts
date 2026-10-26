@@ -1,4 +1,4 @@
-import type { TerminalInfo } from '@shared/ipc'
+import type { TerminalInfo, Workspace } from '@shared/ipc'
 
 /**
  * What the window shows: tabs, terminals running in the background, and
@@ -64,6 +64,50 @@ export function groupUnits(terminals: TerminalInfo[]): Unit[] {
     units.push(makeUnit(members))
   }
   return units
+}
+
+/** The folder a unit belongs to, which is what groups it in the sidebar. */
+export function unitRoot(u: Unit): string {
+  return u.members.find((m) => m.root)?.root ?? ''
+}
+
+export interface WorkspaceGroup {
+  workspace: Workspace
+  /** Open in a tab. */
+  tabs: Unit[]
+  /** Running, with no tab showing them. */
+  background: Unit[]
+}
+
+/**
+ * Units gathered under the folder they were opened on.
+ *
+ * Saved workspaces come first and in their saved order, including the ones
+ * with nothing running: a project you closed everything in is still a
+ * project. Anything running under a folder that is not saved is listed
+ * after, so a terminal can never be invisible just because its workspace
+ * was forgotten.
+ */
+export function groupByWorkspace(model: TabsModel, workspaces: Workspace[]): WorkspaceGroup[] {
+  const groups = new Map<string, WorkspaceGroup>()
+  for (const w of workspaces) groups.set(w.root, { workspace: w, tabs: [], background: [] })
+
+  const place = (u: Unit, where: 'tabs' | 'background'): void => {
+    const root = unitRoot(u)
+    let group = groups.get(root)
+    if (!group) {
+      group = { workspace: { root, name: root ? (root.split('/').filter(Boolean).at(-1) ?? root) : 'Elsewhere' }, tabs: [], background: [] }
+      groups.set(root, group)
+    }
+    group[where].push(u)
+  }
+  for (const u of model.tabs) place(u, 'tabs')
+  for (const u of model.background) place(u, 'background')
+
+  const saved = workspaces.map((w) => groups.get(w.root)!)
+  const unsaved = [...groups.values()].filter((g) => !workspaces.some((w) => w.root === g.workspace.root))
+  // An unsaved group only exists because something is running in it.
+  return [...saved, ...unsaved.filter((g) => g.tabs.length + g.background.length > 0)]
 }
 
 export function unitTitle(u: Unit): string {

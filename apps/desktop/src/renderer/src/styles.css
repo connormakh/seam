@@ -9,6 +9,7 @@
   --danger: #ef6b73;
   --titlebar-height: 38px;
   --activity-width: min(480px, 40vw);
+  --sidebar-width: 180px;
   color-scheme: dark;
   font-family:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
@@ -801,3 +802,124 @@ code {
   padding: 1px 4px;
 }
 
+
+/* Workspaces down the side: what exists, as against the tabs' what is open. */
+.sidebar {
+  position: absolute;
+  top: var(--titlebar-height);
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: var(--sidebar-width);
+  overflow-y: auto;
+  padding: 6px 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.app-with-sidebar .workspace,
+.app-with-sidebar .tabbar {
+  margin-left: var(--sidebar-width);
+}
+
+.ws-empty,
+.ws-none {
+  margin: 0;
+  padding: 4px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.ws {
+  margin-bottom: 6px;
+}
+
+.ws-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 12px;
+}
+
+.ws-name {
+  flex: 1;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.ws-add,
+.ws-forget {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+}
+
+.ws-add:hover,
+.ws-forget:hover {
+  color: var(--text);
+}
+
+.ws-forget:disabled,
+.ws-add:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.ws-session {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px 4px 14px;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-session:hover {
+  background: var(--bg-hover);
+}
+
+.ws-session-active {
+  border-left-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.ws-session-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A session with no status yet has a dot too, so the rows line up. */
+.tab-state[data-state='none'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.ws-private,
+.ws-background {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ws-private {
+  color: var(--danger);
+}

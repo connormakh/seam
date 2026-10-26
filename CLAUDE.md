@@ -8,6 +8,7 @@ Design doc (goals, features, data model, risks): https://claude.ai/artifact/PAdn
 
 Done:
 - **Terminal skeleton:** tabs backed by a private tmux server; closing a tab keeps it running; relaunch restores tabs with screens intact.
+- **Workspaces:** a sidebar (Cmd+Ctrl+S) groups sessions by the folder they were opened on, with a status dot each. A workspace is remembered the moment a pair opens on a folder and outlives everything running in it, so a project is one click from being open again; `+` adds another session to the same folder, which is what makes more than one per project possible.
 - **Paired workspaces:** Cmd+T picks a folder and opens Claude Code (left) + shell (right) with a draggable divider; Ctrl+` switches focus.
 - **Shell to Claude:** zsh/bash integration records every command (exit code, cwd, timing, output range); "Send to Claude" / "Ask Claude" / Cmd+Shift+Enter pastes the last command and its output into Claude's prompt, unsent.
 - **Private shells:** the chip on a shell's header (shared / private). Private means Claude cannot list, read or touch it: for a shell holding credentials.
@@ -27,7 +28,7 @@ Claude to shell:** a `seam` MCP server over a control socket, with `list_shells`
 Next, in order:
 1. **Milestone 2 is done** (hooks, status badges, attach mode, auto sync). What is left from Claude to shell: per-command gutter marks. The shell can mark its own commands with OSC 133 through tmux passthrough (verified), but xterm's decorations render at zero size here, most likely because `scrollback: 0` leaves no buffer for a marker to live in; it needs a different approach, or a small scrollback. For now "by Claude" is on the pane header for the latest command and in the Activity panel for all of them.
 2. ~~**Claude Code hooks**~~, installed per session with `--settings` (never in the user's repo or global settings): status badges (Working / Waiting for you / Idle) from `UserPromptSubmit`, `Notification`, `PermissionRequest`, `Stop`; **attach mode** (queue shell context, delivered via `UserPromptSubmit` `additionalContext`); **auto sync** (per-pair toggle, digest of new shell activity via `UserPromptSubmit` and `PostToolUse`, capped at 2 KB, errors only for long-running processes). Ignore turn events that carry `agent_id` (subagents). Use `last_assistant_message`, not the transcript file, which lags.
-3. **Session browser:** index `~/.claude/projects/*/*.jsonl` by project and cwd, FTS search, resume into a pair (`claude --resume <id>`, branch with `--fork-session`).
+3. **Session browser:** the workspace sidebar is in. Still to do: index `~/.claude/projects/*/*.jsonl` by project and cwd, FTS search, resume into a pair (`claude --resume <id>`, branch with `--fork-session`).
 4. Quick run (Cmd+;) and quick ask (Cmd+'), per-command gutter marks, final name, packaging (signing, bundled tmux, auto-update).
 
 ## Commands
