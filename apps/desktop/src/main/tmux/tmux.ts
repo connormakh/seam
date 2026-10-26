@@ -88,6 +88,12 @@ export class TmuxError extends Error {
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
+/** A wheel flick is a few lines; anything past a screenful is a runaway. */
+const MAX_SCROLL = 200
+
+/** Arrow keys a program is sent for one flick; it is reading them one by one. */
+const MAX_KEY_REPEAT = 20
+
 /** Variables that belong to the app process, not to a user's shell. */
 const APP_ONLY_ENV = /^(ELECTRON_|VITE_|CHROME_|NODE_OPTIONS$|NODE_ENV$|TMUX$|TMUX_PANE$)/
 
@@ -285,6 +291,67 @@ export class Tmux {
     if (opts.viaProgram) await this.run(['send-keys', '-t', target, 'C-l'])
     else await this.run(['send-keys', '-R', '-t', target])
     await this.run(['clear-history', '-t', target])
+  }
+
+  /**
+   * Scroll a pane's history, negative for older lines. Returns whether the
+   * pane is still showing history afterwards.
+   *
+   * tmux's own mouse handling is off so that dragging makes a selection, so
+   * the wheel arrives here instead. Scrolling back puts the pane in copy
+   * mode; -e makes it leave again by itself on reaching the bottom, so
+   * scrolling down to the end needs no cleanup.
+   */
+  async scrollPane(id: string, lines: number): Promise<boolean> {
+    assertId(id)
+    const target = `=${id}:`
+    const n = Math.min(Math.abs(Math.trunc(lines)), MAX_SCROLL)
+    if (n === 0) return await this.inMode(id)
+    const state = await this.paneState(id)
+
+    // A program drawing its own screen has no history behind it. The arrow
+    // keys are what `less` and `man` scroll with, and what tmux's own wheel
+    // handling sends them, so that is what the wheel becomes.
+    if (state.alternate) {
+      const repeat = Math.min(n, MAX_KEY_REPEAT)
+      await this.run(['send-keys', '-t', target, '-N', String(repeat), lines < 0 ? 'Up' : 'Down'])
+      return false
+    }
+
+    if (lines < 0) await this.run(['copy-mode', '-e', '-t', target])
+    // Nothing to scroll down to from the live screen.
+    else if (!state.inMode) return false
+    try {
+      const key = lines < 0 ? 'scroll-up' : 'scroll-down'
+      await this.run(['send-keys', '-X', '-N', String(n), '-t', target, key])
+    } catch {
+      // The pane can leave copy mode between the check and the keys.
+      return false
+    }
+    return await this.inMode(id)
+  }
+
+  /** Whether the pane is showing history rather than its live screen. */
+  async inMode(id: string): Promise<boolean> {
+    return (await this.paneState(id)).inMode
+  }
+
+  /** What the wheel has to know: who owns the screen, and where it is. */
+  private async paneState(id: string): Promise<{ inMode: boolean; alternate: boolean }> {
+    assertId(id)
+    const out = await this.run(['display-message', '-p', '-t', `=${id}:`, `#{pane_in_mode}${SEP}#{alternate_on}`])
+    const [inMode, alternate] = out.trim().split(SEP)
+    return { inMode: inMode === '1', alternate: alternate === '1' }
+  }
+
+  /** Put a pane back on its live screen, wherever it was scrolled to. */
+  async exitCopyMode(id: string): Promise<void> {
+    assertId(id)
+    try {
+      await this.run(['send-keys', '-X', '-t', `=${id}:`, 'cancel'])
+    } catch {
+      // Not in a mode: already where we want it.
+    }
   }
 
   /** Hide a shell from Claude, or show it again. */

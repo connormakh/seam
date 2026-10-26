@@ -13,8 +13,18 @@ set -g prefix2 None
 set -g status off
 set -g set-titles off
 
-# Wheel scrolling enters tmux history. Revisit with xterm.js selection in M2.
-set -g mouse on
+# tmux does not take the mouse: dragging in a pane is an ordinary xterm.js
+# selection you can copy, which is what people reach for first. The wheel is
+# driven from the renderer instead, through copy-mode. A program inside a
+# pane that asks for the mouse itself still gets it.
+set -g mouse off
+
+# Scrolling back must not draw anything over the pane: tmux's position
+# indicator sits on the top line, and a selection of that line would copy it
+# along with the text. Older tmux has no such option and ignores this.
+%if "#{>=:#{version},3.4}"
+set -g copy-mode-position-format ""
+%endif
 
 # Long history: shell-to-Claude reads command output out of it.
 set -g history-limit 50000

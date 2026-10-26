@@ -13,6 +13,7 @@ import type {
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { Settings } from './Settings'
+import { liveTerminal } from './terminal/registry'
 import { applyTheme, DEFAULT_THEME } from './terminal/themes'
 import { Sidebar } from './Sidebar'
 import { TabBar } from './TabBar'
@@ -276,6 +277,13 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     return window.seam.onMenuCommand((command) => {
       const activeKey = modelRef.current.activeKey
+      // Where the keyboard is decides what an edit command means: with the
+      // focus in Seam's own chrome, a settings field say, it means that
+      // field and not whatever is still selected in the pane behind it.
+      const focusedTerminal = (): string | null => {
+        const host = document.activeElement?.closest('.terminal-host')
+        return host instanceof HTMLElement ? (host.dataset.terminalId ?? null) : null
+      }
       switch (command.type) {
         case 'new-pair':
           void newPair()
@@ -311,6 +319,23 @@ export function App(): React.JSX.Element {
         case 'open-settings':
           setSettingsOpen((open) => !open)
           break
+        case 'copy': {
+          // A pane's selection lives inside its xterm instance, where the
+          // native copy cannot see it.
+          const term = liveTerminal(focusedTerminal())
+          const text = term?.hasSelection() ? term.getSelection() : ''
+          if (text) void window.seam.edit.copy(text)
+          else window.seam.edit.nativeCopy()
+          break
+        }
+        case 'select-all': {
+          // Select All in a pane means that pane, not every pane at once,
+          // which is what the native command would reach for.
+          const term = liveTerminal(focusedTerminal())
+          if (term) term.selectAll()
+          else window.seam.edit.nativeSelectAll()
+          break
+        }
         case 'clear-screen': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           // The shell only. Claude's pane is a transcript you are reading,

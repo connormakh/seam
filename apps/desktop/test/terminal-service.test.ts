@@ -36,6 +36,15 @@ describe('TerminalService (real tmux + node-pty)', () => {
 
   const seen = (id: string, text: string) => waitFor(async () => (output.get(id) ?? '').includes(text))
 
+  // The shell here is whoever's login shell runs the tests, so a prompt is
+  // recognised by its character rather than by any one shell's.
+  const PROMPT = /[%$#>]/
+  const atPrompt = (id: string) => waitFor(async () => PROMPT.test(await tmux.capturePane(id)))
+
+  /** How far up its history a pane is showing, zero when it is live. */
+  const scrollPosition = async (id: string): Promise<number> =>
+    Number((await tmux.run(['display-message', '-p', '-t', `=${id}:`, '#{scroll_position}'])).trim()) || 0
+
   it('creates a shell and streams what is typed into it', async () => {
     const t = await service.create({ title: 'tests' })
     expect(t).toMatchObject({ kind: 'shell', title: 'tests', attached: false })
@@ -144,6 +153,94 @@ describe('TerminalService (real tmux + node-pty)', () => {
   it('refuses to attach to a terminal that is not running', async () => {
     await expect(service.attach('t-missing', { cols: 80, rows: 24 })).rejects.toThrow(/not running/)
   })
+
+  it('scrolls back through history, and the pane leaves it at the bottom', async () => {
+    const t = await service.create({ title: 'scrolled' })
+    await service.attach(t.id, { cols: 80, rows: 6 })
+    await atPrompt(t.id)
+    service.write(t.id, 'for i in $(seq 60); do echo row-$i; done\r')
+    await seen(t.id, 'row-60')
+    expect(await tmux.inMode(t.id)).toBe(false)
+
+    // What the pane redraws is what the user sees, so that is the proof that
+    // the wheel reached the history rather than only the mode changing.
+    output.set(t.id, '')
+    await service.scroll(t.id, -40)
+    expect(await tmux.inMode(t.id)).toBe(true)
+    expect(await scrollPosition(t.id)).toBe(40)
+    await seen(t.id, 'row-20')
+
+    // -e: scrolling down past the end leaves copy mode on its own, so being
+    // back on the live screen needs no cleanup.
+    await service.scroll(t.id, 80)
+    expect(await tmux.inMode(t.id)).toBe(false)
+    expect(await scrollPosition(t.id)).toBe(0)
+
+    service.detach(t.id)
+    await tmux.killSession(t.id)
+  })
+
+  it('sends a full-screen program the arrow keys it scrolls with', async () => {
+    const t = await service.create({ title: 'alt-screen' })
+    await service.attach(t.id, { cols: 80, rows: 10 })
+    await atPrompt(t.id)
+
+    // `less` draws its own screen, so there is no history behind it to scroll
+    // and no copy mode to enter: it reads the arrow keys instead.
+    service.write(t.id, 'for i in $(seq 200); do echo row-$i; done | less\r')
+    await waitFor(async () => (await tmux.capturePane(t.id)).includes('row-9'))
+    expect(await tmux.capturePane(t.id)).not.toContain('row-40')
+
+    await service.scroll(t.id, 12)
+    await waitFor(async () => (await tmux.capturePane(t.id)).includes('row-20'))
+    expect(await tmux.inMode(t.id)).toBe(false)
+
+    service.write(t.id, 'q')
+    await atPrompt(t.id)
+    service.detach(t.id)
+    await tmux.killSession(t.id)
+  })
+
+  it('types at the prompt rather than into copy mode after a scroll', async () => {
+    const t = await service.create({ title: 'scrolled-typing' })
+    await service.attach(t.id, { cols: 80, rows: 6 })
+    await atPrompt(t.id)
+    service.write(t.id, 'for i in $(seq 60); do echo row-$i; done\r')
+    await seen(t.id, 'row-60')
+    await service.scroll(t.id, -40)
+    expect(await tmux.inMode(t.id)).toBe(true)
+
+    // One character per call, the way a fast typist arrives: leaving copy
+    // mode takes a tmux call, and the characters have to wait for it in order.
+    for (const c of 'echo typed-at-prompt\r') service.write(t.id, c)
+    await waitFor(async () => (await tmux.capturePane(t.id)).includes('typed-at-prompt'))
+    expect(await tmux.inMode(t.id)).toBe(false)
+    expect(await tmux.capturePane(t.id)).toContain('echo typed-at-prompt')
+
+    service.detach(t.id)
+    await tmux.killSession(t.id)
+  })
+
+  it('clears a shell that is scrolled back', async () => {
+    const t = await service.create({ title: 'scrolled-clear' })
+    await service.attach(t.id, { cols: 80, rows: 6 })
+    await atPrompt(t.id)
+    service.write(t.id, 'for i in $(seq 60); do echo row-$i; done\r')
+    await seen(t.id, 'row-60')
+    await service.scroll(t.id, -40)
+
+    await service.clear(t.id)
+
+    expect(await tmux.inMode(t.id)).toBe(false)
+    await waitFor(async () => (await tmux.position(t.id)).history === 0)
+    const after = (await tmux.capturePane(t.id)).split('\n').filter((l) => l.trim())
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatch(PROMPT)
+
+    service.detach(t.id)
+    await tmux.killSession(t.id)
+  })
+
 })
 
 describe('TerminalService open state', () => {

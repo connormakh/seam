@@ -112,6 +112,11 @@ const api: SeamApi = {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch)
   },
+  edit: {
+    copy: (text) => ipcRenderer.invoke(IPC.editCopy, text),
+    nativeCopy: () => ipcRenderer.send(IPC.editNativeCopy),
+    nativeSelectAll: () => ipcRenderer.send(IPC.editNativeSelectAll)
+  },
   audit: {
     list: () => ipcRenderer.invoke(IPC.auditList),
     onAppended: (listener) => {
@@ -135,6 +140,7 @@ const api: SeamApi = {
     clear: (id) => ipcRenderer.invoke(IPC.terminalClear, id),
     write: (id, data) => ipcRenderer.send(IPC.terminalWrite, id, data),
     resize: (id, size) => ipcRenderer.send(IPC.terminalResize, id, size),
+    scroll: (id, lines) => ipcRenderer.invoke(IPC.terminalScroll, id, lines),
     onData: (id, listener) => {
       let set = dataListeners.get(id)
       if (!set) dataListeners.set(id, (set = new Set()))

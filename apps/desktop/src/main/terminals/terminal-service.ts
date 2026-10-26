@@ -45,6 +45,8 @@ interface Attachment {
   detaching: boolean
   /** Latest size asked for, applied when the pty spawns. */
   size: TerminalSize
+  /** Set while a write is waiting on tmux, so later writes keep their order. */
+  queue: Promise<void> | null
 }
 
 const MIN_COLS = 2
@@ -66,6 +68,8 @@ function clampSize(size: TerminalSize): TerminalSize {
  */
 export class TerminalService {
   private readonly attachments = new Map<string, Attachment>()
+  /** Terminals left showing history by a scroll, so typing can leave it. */
+  private readonly scrolled = new Set<string>()
 
   constructor(private readonly o: TerminalServiceOptions) {}
 
@@ -154,7 +158,8 @@ export class TerminalService {
         if (this.attachments.get(id) === attachment) this.o.events.data(id, data)
       }),
       detaching: false,
-      size
+      size,
+      queue: null
     }
     this.attachments.set(id, attachment)
     const isCurrent = (): boolean => !attachment.detaching && this.attachments.get(id) === attachment
@@ -212,13 +217,44 @@ export class TerminalService {
   async kill(id: string): Promise<void> {
     const a = this.attachments.get(id)
     if (a) a.batcher.flush()
+    this.scrolled.delete(id)
     // The attached client exits on its own once the session is gone and
     // reports ended: true through its exit handler.
     await this.o.tmux.killSession(id)
   }
 
+  /**
+   * Type into a terminal.
+   *
+   * A pane scrolled back is in tmux's copy mode, where a keystroke is a
+   * copy-mode command rather than input, so it is put back on its live
+   * screen first. That takes a tmux call, so the rest of a fast "ls" queues
+   * behind it instead of racing past it and arriving as "sl".
+   */
   write(id: string, data: string): void {
-    this.attachments.get(id)?.pty?.write(data)
+    const a = this.attachments.get(id)
+    if (!a) return
+    if (this.scrolled.delete(id)) a.queue = this.o.tmux.exitCopyMode(id)
+    if (!a.queue) {
+      a.pty?.write(data)
+      return
+    }
+    const queue = a.queue.then(() => {
+      a.pty?.write(data)
+      if (a.queue === queue) a.queue = null
+    })
+    a.queue = queue
+  }
+
+  /**
+   * Scroll a terminal's history, negative for older lines.
+   *
+   * The wheel comes from the renderer because tmux is not handling the
+   * mouse, which is what leaves dragging free to make a selection.
+   */
+  async scroll(id: string, lines: number): Promise<void> {
+    if (await this.o.tmux.scrollPane(id, lines)) this.scrolled.add(id)
+    else this.scrolled.delete(id)
   }
 
   resize(id: string, size: TerminalSize): void {
@@ -272,6 +308,8 @@ export class TerminalService {
    * into its output, so its screen is reset instead.
    */
   async clear(id: string): Promise<void> {
+    // A pane showing history has no live screen to clear yet.
+    if (this.scrolled.delete(id)) await this.o.tmux.exitCopyMode(id)
     const busy = (await this.o.isBusy?.(id)) ?? false
     await this.o.tmux.clearPane(id, { viaProgram: !busy })
   }

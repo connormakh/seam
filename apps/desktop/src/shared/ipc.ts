@@ -21,6 +21,11 @@ export const IPC = {
   /** renderer -> main, fire and forget */
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
+  terminalScroll: 'terminal:scroll',
+  /** Copy and Select All: the renderer owns the selection, main the clipboard. */
+  editCopy: 'edit:copy',
+  editNativeCopy: 'edit:native-copy',
+  editNativeSelectAll: 'edit:native-select-all',
   /** main -> renderer events */
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
@@ -67,6 +72,9 @@ export type MenuCommand =
   | { type: 'open-settings' }
   /** Wipe the visible screen and the scrollback of the active tab's panes. */
   | { type: 'clear-screen' }
+  /** Edit > Copy and Select All, which mean the focused pane's selection. */
+  | { type: 'copy' }
+  | { type: 'select-all' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
@@ -244,6 +252,8 @@ export interface TerminalApi {
   clear(id: string): Promise<void>
   write(id: string, data: string): void
   resize(id: string, size: TerminalSize): void
+  /** Scroll the terminal's history; negative lines are older. */
+  scroll(id: string, lines: number): Promise<void>
   onData(id: string, listener: (data: string) => void): () => void
   onExit(listener: (event: TerminalExitEvent) => void): () => void
 }
@@ -305,6 +315,16 @@ export interface SeamApi {
   settings: {
     get: () => Promise<SeamSettingsView>
     set: (patch: Partial<SeamSettingsView>) => Promise<SeamSettingsView>
+  }
+  /**
+   * Edit > Copy and Select All. A terminal's selection belongs to its xterm
+   * instance, so the renderer resolves what is selected and main does the
+   * part only it can; the native fallbacks are for Seam's own text fields.
+   */
+  edit: {
+    copy: (text: string) => Promise<void>
+    nativeCopy: () => void
+    nativeSelectAll: () => void
   }
   audit: {
     list: () => Promise<AuditEntry[]>

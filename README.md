@@ -65,6 +65,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 - **Private shells.** One click keeps a shell out of Claude's reach entirely: not listed, not readable, not writable. For the one holding credentials.
 - **Secrets masked** in everything sent to Claude, by pattern.
 - **Themes.** Dark, Midnight, Ember and Light, from the Settings button at the bottom of the sidebar. The chrome and the terminals change together.
+- **Selecting text works the way it does in any terminal.** Drag to select, double-click a word, triple-click a line, ⌘C to copy. The wheel scrolls back through the history, and typing puts you back at the prompt.
 
 ## Shortcuts
 
@@ -77,6 +78,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 | ⌘⇧↩ | Send the shell's last command to Claude |
 | ⌘⌥↩ | Attach it to Claude's next prompt |
 | ⌘K | Clear the shell, screen and scrollback |
+| ⌘C / ⌘A | Copy the selection in the pane you are in / select its screen |
 | ⌘⇧A | Activity |
 | ⌘⌃S | Workspaces sidebar |
 | ⌘, | Settings (also the button at the bottom of the sidebar) |
@@ -127,7 +129,7 @@ Running an agent in your real shell deserves a straight answer about what stops 
 
 ## Status
 
-The terminal, both directions of context sharing, and packaging are in. 179 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
+The terminal, both directions of context sharing, and packaging are in. 193 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
 
 Not there yet:
 

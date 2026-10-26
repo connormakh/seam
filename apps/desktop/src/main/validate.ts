@@ -14,9 +14,24 @@ export class InvalidInput extends Error {
 const ID = /^[A-Za-z0-9_-]{1,64}$/
 const MAX_DIMENSION = 1000
 const MAX_TITLE = 200
+/** A whole screenful of wheel at once is already more than anyone flicks. */
+const MAX_SCROLL = 500
+/** Enough for any screenful of selected text, not enough to be a weapon. */
+const MAX_CLIPBOARD = 4 * 1024 * 1024
 
 export function asId(v: unknown): string {
   if (typeof v !== 'string' || !ID.test(v)) throw new InvalidInput('invalid terminal id')
+  return v
+}
+
+export function asScrollLines(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new InvalidInput('invalid scroll amount')
+  return Math.max(-MAX_SCROLL, Math.min(MAX_SCROLL, Math.trunc(v)))
+}
+
+export function asClipboardText(v: unknown): string {
+  if (typeof v !== 'string') throw new InvalidInput('invalid clipboard text')
+  if (v.length > MAX_CLIPBOARD) throw new InvalidInput('clipboard text too long')
   return v
 }
 

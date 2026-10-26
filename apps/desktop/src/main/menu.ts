@@ -128,15 +128,29 @@ export function installMenu(
     },
     {
       label: 'Edit',
-      // Roles give the xterm.js textarea native copy, paste and select all.
       submenu: [
         { role: 'undo' },
         { role: 'redo' },
         { type: 'separator' },
         { role: 'cut' },
-        { role: 'copy' },
+        {
+          // Not the native role: a terminal's selection lives inside its
+          // xterm instance, where the native copy cannot see it. The window
+          // falls back to the native command for Seam's own text fields.
+          id: 'copy',
+          label: 'Copy',
+          accelerator: 'CmdOrCtrl+C',
+          click: () => send({ type: 'copy' })
+        },
         { role: 'paste' },
-        { role: 'selectAll' }
+        {
+          // The native one would select the whole window, both panes and
+          // the chrome around them.
+          id: 'select-all',
+          label: 'Select All',
+          accelerator: 'CmdOrCtrl+A',
+          click: () => send({ type: 'select-all' })
+        }
       ]
     },
     {

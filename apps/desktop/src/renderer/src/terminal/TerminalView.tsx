@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { registerTerminal } from './registry'
 import { terminalOptions } from './theme'
 import { DEFAULT_THEME, THEMES } from './themes'
 import type { ThemeName } from '@shared/ipc'
@@ -50,6 +51,62 @@ export function TerminalView({ id, theme, visible, focused, onFocus }: Props): R
     // App shortcuts come from the menu; keep Cmd combos away from the shell.
     term.attachCustomKeyEventHandler((e) => !(e.metaKey && e.type === 'keydown' && !['c', 'v'].includes(e.key)))
 
+    const unregister = registerTerminal(id, term)
+
+    // Programs copy by asking the terminal to, with OSC 52, and that is the
+    // only way text selected inside tmux's copy mode can reach the Mac's
+    // clipboard. A read request is never answered: a program that can ask
+    // for the clipboard can read whatever was last copied anywhere.
+    const osc = term.parser.registerOscHandler(52, (data) => {
+      const payload = data.slice(data.indexOf(';') + 1)
+      if (payload === '?' || payload === '') return true
+      try {
+        const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0))
+        void window.seam.edit.copy(new TextDecoder().decode(bytes))
+      } catch {
+        // Not valid base64: not something we can put on a clipboard.
+      }
+      return true
+    })
+
+    // tmux is not handling the mouse, so that dragging selects text, which
+    // leaves the wheel to be forwarded to tmux's history from here. This
+    // runs instead of xterm's own handling, which with no scrollback of its
+    // own turns the wheel into arrow keys, and so would walk the shell's
+    // command history. xterm does not ask at all when the program in the
+    // pane has requested wheel events itself: then it gets them.
+    let carry = 0
+    let inFlight = false
+    let backlog = 0
+    const drain = (): void => {
+      if (inFlight || backlog === 0) return
+      const lines = backlog
+      backlog = 0
+      inFlight = true
+      void api.scroll(id, lines).catch(noop).finally(() => {
+        inFlight = false
+        drain()
+      })
+    }
+    term.attachCustomWheelEventHandler((e) => {
+      // A program reading the mouse itself gets the wheel, which xterm sends
+      // on once this hands the event back. Whether the pane is showing a
+      // program's own screen is a question only tmux can answer, since from
+      // out here tmux is always on the alternate screen itself.
+      if (term.modes.mouseTrackingMode !== 'none') return true
+      e.preventDefault()
+      // deltaMode 0 is pixels, which only a row height turns into lines.
+      const rowPx = Math.max(1, host.clientHeight / Math.max(1, term.rows))
+      carry += e.deltaMode === 0 ? e.deltaY / rowPx : e.deltaY
+      const lines = Math.trunc(carry)
+      if (lines !== 0) {
+        carry -= lines
+        backlog += lines
+        drain()
+      }
+      return false
+    })
+
     // Clicking into a pane makes it the focused side of its pair.
     const textarea = term.textarea
     const reportFocus = (): void => onFocusRef.current?.(id)
@@ -80,6 +137,8 @@ export function TerminalView({ id, theme, visible, focused, onFocus }: Props): R
     return () => {
       disposed = true
       observer.disconnect()
+      osc.dispose()
+      unregister()
       textarea?.removeEventListener('focus', reportFocus)
       offData()
       input.dispose()
@@ -106,6 +165,8 @@ export function TerminalView({ id, theme, visible, focused, onFocus }: Props): R
 
   return <div ref={hostRef} className="terminal-host" data-terminal-id={id} />
 }
+
+function noop(): void {}
 
 /** Fits the terminal to its host. Returns false while the host is hidden or has no size. */
 function safeFit(fit: FitAddon, host: HTMLElement): boolean {

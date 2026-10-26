@@ -1,7 +1,7 @@
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { asCreateOptions, asId, asSize, cleanTitle } from '../src/main/validate'
+import { asClipboardText, asCreateOptions, asId, asScrollLines, asSize, cleanTitle } from '../src/main/validate'
 import { makeTempDir } from './helpers'
 
 describe('renderer input validation', () => {
@@ -37,5 +37,20 @@ describe('renderer input validation', () => {
 
   it('drops unknown kinds and empty titles', () => {
     expect(asCreateOptions({ kind: 'root', title: '\n\n' })).toEqual({})
+  })
+
+  it('bounds a scroll to whole lines in both directions', () => {
+    expect(asScrollLines(-3)).toBe(-3)
+    expect(asScrollLines(2.9)).toBe(2)
+    expect(asScrollLines(-9999)).toBe(-500)
+    expect(asScrollLines(9999)).toBe(500)
+    expect(() => asScrollLines(Number.NaN)).toThrow()
+    expect(() => asScrollLines('3')).toThrow()
+  })
+
+  it('bounds clipboard text', () => {
+    expect(asClipboardText('hello')).toBe('hello')
+    expect(() => asClipboardText('x'.repeat(5 * 1024 * 1024))).toThrow(/too long/)
+    expect(() => asClipboardText(null)).toThrow()
   })
 })

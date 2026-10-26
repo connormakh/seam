@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
 import {
   IPC,
   type AppInfo,
@@ -12,7 +12,7 @@ import {
 } from '@shared/ipc'
 import type { TerminalService } from './terminals/terminal-service'
 import type { Runtime } from './runtime'
-import { asCreateOptions, asCreatePairOptions, asId, asSize } from './validate'
+import { asClipboardText, asCreateOptions, asCreatePairOptions, asId, asScrollLines, asSize } from './validate'
 
 function requireTerminals(rt: Runtime): TerminalService {
   if (!rt.terminals) throw new Error('tmux is not installed')
@@ -69,6 +69,16 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     })
   )
   ipcMain.handle(IPC.terminalClear, (_e, id: unknown) => requireTerminals(rt).clear(asId(id)))
+  ipcMain.handle(IPC.terminalScroll, (_e, id: unknown, lines: unknown) =>
+    requireTerminals(rt).scroll(asId(id), asScrollLines(lines))
+  )
+  // The renderer decides what is selected; main is only the one that can
+  // reach the clipboard.
+  ipcMain.handle(IPC.editCopy, (_e, text: unknown) => {
+    clipboard.writeText(asClipboardText(text))
+  })
+  ipcMain.on(IPC.editNativeCopy, (e) => e.sender.copy())
+  ipcMain.on(IPC.editNativeSelectAll, (e) => e.sender.selectAll())
   ipcMain.handle(IPC.sessionStatuses, async (): Promise<SessionStatus[]> => rt.hooks?.statusList() ?? [])
   ipcMain.handle(IPC.autoSyncGet, async (_e, id: unknown): Promise<boolean> =>
     typeof id === 'string' ? (rt.autoSync?.enabled(id) ?? false) : false
