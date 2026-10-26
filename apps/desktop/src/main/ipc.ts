@@ -41,6 +41,17 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     await terminals.setPrivate(asId(id), isPrivate === true)
     return terminals.list()
   })
+  ipcMain.handle(IPC.settingsGet, async () => rt.settings.all())
+  ipcMain.handle(IPC.settingsSet, async (_e, patch: unknown) => {
+    // Everything here is validated again when it is read back off disk, so
+    // the screen can only ever make the file say something the app accepts.
+    const o = (patch ?? {}) as Record<string, unknown>
+    const next: Record<string, unknown> = {}
+    if (typeof o['shellOnly'] === 'boolean') next['shellOnly'] = o['shellOnly']
+    if (o['policy']) next['policy'] = o['policy']
+    if (o['policies']) next['policies'] = o['policies']
+    return rt.settings.replace(next)
+  })
   ipcMain.handle(IPC.workspaceList, async (): Promise<Workspace[]> => rt.settings.workspaces())
   ipcMain.handle(IPC.workspaceForget, async (_e, root: unknown): Promise<Workspace[]> =>
     typeof root === 'string' ? rt.settings.forgetWorkspace(root) : rt.settings.workspaces()
@@ -112,7 +123,8 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     version: app.getVersion(),
     platform: process.platform,
     electron: process.versions.electron ?? 'unknown',
-    tmux: rt.tmuxVersion
+    tmux: rt.tmuxVersion,
+    claude: { found: rt.claude.found, version: rt.claude.version, ok: rt.claude.ok, problem: rt.claude.problem }
   }))
 
   ipcMain.handle(IPC.contextSendLast, (_e, shellId: unknown, claudeId: unknown) => {

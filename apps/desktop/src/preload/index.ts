@@ -108,6 +108,10 @@ const api: SeamApi = {
     list: () => ipcRenderer.invoke(IPC.workspaceList),
     forget: (root) => ipcRenderer.invoke(IPC.workspaceForget, root)
   },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.settingsGet),
+    set: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch)
+  },
   audit: {
     list: () => ipcRenderer.invoke(IPC.auditList),
     onAppended: (listener) => {

@@ -11,6 +11,7 @@ import type {
 } from '@shared/ipc'
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
+import { Settings } from './Settings'
 import { Sidebar } from './Sidebar'
 import { TabBar } from './TabBar'
 import { groupByWorkspace, initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
@@ -37,6 +38,7 @@ export function App(): React.JSX.Element {
   const [policy, setPolicy] = useState<PolicyMode>('allow')
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [attached, setAttached] = useState<Record<string, number>>({})
 
   // Latest committed model, for event handlers that should not re-subscribe on every change.
@@ -303,6 +305,9 @@ export function App(): React.JSX.Element {
         case 'toggle-sidebar':
           setSidebarOpen((open) => !open)
           break
+        case 'open-settings':
+          setSettingsOpen((open) => !open)
+          break
         case 'send-last': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           if (unit && isPair(unit)) void sendLast(unit)
@@ -337,6 +342,8 @@ export function App(): React.JSX.Element {
     void window.seam.workspaces.list().then(setWorkspaces)
   }, [])
   const tmuxMissing = info !== null && info.tmux === null
+  // Said once, at the top, rather than discovered inside a pane later.
+  const claudeProblem = info?.claude.ok === false ? info.claude.problem : null
 
   return (
     <div className={`app${activityOpen ? ' app-with-activity' : ''}${sidebarOpen ? ' app-with-sidebar' : ''}`}>
@@ -401,6 +408,14 @@ export function App(): React.JSX.Element {
           onNewSession={(root) => void newSessionIn(root)}
           onForget={(root) => void window.seam.workspaces.forget(root).then(setWorkspaces)}
         />
+      )}
+
+      {settingsOpen && <Settings info={info} onClose={() => setSettingsOpen(false)} />}
+
+      {claudeProblem && (
+        <div className="banner banner-warn" role="status">
+          {claudeProblem}
+        </div>
       )}
 
       <main className="workspace">

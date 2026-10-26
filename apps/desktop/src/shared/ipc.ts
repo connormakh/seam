@@ -47,7 +47,9 @@ export const IPC = {
   policyGet: 'policy:get',
   policySet: 'policy:set',
   workspaceList: 'workspace:list',
-  workspaceForget: 'workspace:forget'
+  workspaceForget: 'workspace:forget',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set'
 } as const
 
 /** Commands the application menu (and its shortcuts) sends to the window. */
@@ -61,6 +63,7 @@ export type MenuCommand =
   | { type: 'attach-last' }
   | { type: 'toggle-activity' }
   | { type: 'toggle-sidebar' }
+  | { type: 'open-settings' }
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
@@ -71,6 +74,8 @@ export interface AppInfo {
   platform: string
   electron: string
   tmux: string | null
+  /** Claude Code as found at startup, so a missing one is said once and plainly. */
+  claude: { found: boolean; version: string | null; ok: boolean; problem: string | null }
 }
 
 export type TerminalKind = 'shell' | 'claude'
@@ -133,6 +138,16 @@ export interface ApprovalRequest {
 }
 
 export type ApprovalDecision = 'approve' | 'approve-similar' | 'deny'
+
+/** Everything Seam remembers between launches, as the settings screen sees it. */
+export interface SeamSettingsView {
+  shellOnly: boolean
+  policy: { mode: PolicyMode; allowPrefixes: string[] }
+  /** Per workspace root, over the default above. */
+  policies: Record<string, { mode: PolicyMode; allowPrefixes: string[] }>
+  autoSyncOff: string[]
+  workspaces: Workspace[]
+}
 
 /** A folder the user works in. Its root is its identity. */
 export interface Workspace {
@@ -278,6 +293,10 @@ export interface SeamApi {
   workspaces: {
     list: () => Promise<Workspace[]>
     forget: (root: string) => Promise<Workspace[]>
+  }
+  settings: {
+    get: () => Promise<SeamSettingsView>
+    set: (patch: Partial<SeamSettingsView>) => Promise<SeamSettingsView>
   }
   audit: {
     list: () => Promise<AuditEntry[]>

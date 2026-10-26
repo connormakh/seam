@@ -37,6 +37,13 @@ export function installMenu(
           {
             label: app.name,
             submenu: [
+              {
+                id: 'open-settings',
+                label: 'Settings…',
+                accelerator: 'Cmd+,',
+                click: () => send({ type: 'open-settings' })
+              },
+              { type: 'separator' },
               { role: 'about' },
               { type: 'separator' },
               { role: 'hide' },

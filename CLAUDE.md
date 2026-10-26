@@ -8,6 +8,8 @@ Design doc (goals, features, data model, risks): https://claude.ai/artifact/PAdn
 
 Done:
 - **Terminal skeleton:** tabs backed by a private tmux server; closing a tab keeps it running; relaunch restores tabs with screens intact.
+- **Settings (Cmd+,):** shell-only, the default policy and its allowlist prefixes, and what Seam is driving (the Claude Code and tmux it found). Writes the same `settings.json` that can be edited by hand.
+- **First-run check:** Claude Code is looked for through the login shell at startup, with its version compared to the oldest Seam can drive, and said in a banner rather than discovered inside a pane later.
 - **Workspaces:** a sidebar (Cmd+Ctrl+S) groups sessions by the folder they were opened on, with a status dot each. A workspace is remembered the moment a pair opens on a folder and outlives everything running in it, so a project is one click from being open again; `+` adds another session to the same folder, which is what makes more than one per project possible.
 - **Paired workspaces:** Cmd+T picks a folder and opens Claude Code (left) + shell (right) with a draggable divider; Ctrl+` switches focus.
 - **Shell to Claude:** zsh/bash integration records every command (exit code, cwd, timing, output range); "Send to Claude" / "Ask Claude" / Cmd+Shift+Enter pastes the last command and its output into Claude's prompt, unsent.

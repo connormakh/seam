@@ -14,9 +14,10 @@ import { AuditLog } from './mcp/audit'
 import { installMcpServer, writeMcpConfig } from './mcp/install'
 import type { PolicySettings } from './mcp/policy'
 import { Tools } from './mcp/tools'
-import { SettingsStore } from './settings'
+import { SettingsStore, type SeamSettings } from './settings'
 import { CommandTracker } from './shell/command-tracker'
 import { installShellIntegration, shellLaunch } from './shell/integration'
+import { checkClaude, type ClaudeCheck } from './terminals/claude-check'
 import { claudeCommand, shellOnlyArgs, userShell } from './terminals/claude-command'
 import { ensureSpawnHelpersExecutable } from './terminals/spawn-helper'
 import { TerminalService } from './terminals/terminal-service'
@@ -53,6 +54,8 @@ export interface Runtime {
   /** Session status and the attach queue, fed by hooks; null without tmux. */
   hooks: HookRouter | null
   tmuxVersion: string | null
+  /** Whether Claude Code is there and new enough, as found at startup. */
+  claude: ClaudeCheck
   /** Null when tmux is missing; the renderer explains how to install it. */
   terminals: TerminalService | null
   /** Settings that take effect when the next pair starts. */
@@ -71,6 +74,9 @@ export interface RuntimeSettings {
   /** The policy for a workspace root, falling back to the default. */
   policy: (root: string) => PolicySettings
   setPolicy: (root: string, mode: PolicySettings['mode']) => void
+  /** The whole of it, for the settings screen. */
+  all: () => SeamSettings
+  replace: (patch: Partial<SeamSettings>) => SeamSettings
   /** Folders worked in, newest first; they outlive their terminals. */
   workspaces: () => Workspace[]
   rememberWorkspace: (root: string, name?: string) => Workspace[]
@@ -78,6 +84,8 @@ export interface RuntimeSettings {
 }
 
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
+  // Asked once, through the login shell, because that is how Claude is started.
+  const claude = await checkClaude(userShell())
   const store = new SettingsStore(join(o.userDataDir, 'settings.json'))
   // The shell is the one terminal both the user and Claude work in, so a
   // command Claude runs belongs there and not in a hidden subprocess, which
@@ -88,6 +96,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     shellOnly: () => (override === undefined ? store.get().shellOnly : override !== '0'),
     setShellOnly: (value) => void store.update({ shellOnly: value }),
     policy: (root) => store.get().policies[root] ?? store.get().policy,
+    all: () => store.get(),
+    replace: (patch) => store.update(patch),
     workspaces: () => store.get().workspaces,
     rememberWorkspace: (root, name) => store.rememberWorkspace(root, name),
     forgetWorkspace: (root) => store.forgetWorkspace(root),
@@ -116,7 +126,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       hooks: null,
       tmuxVersion: null,
       terminals: null,
-      settings
+      settings,
+      claude
     }
 
   const tmuxDir = join(o.userDataDir, 'tmux')
@@ -154,7 +165,8 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       hooks: null,
       tmuxVersion: null,
       terminals: null,
-      settings
+      settings,
+      claude
     }
   }
 
@@ -303,7 +315,21 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     }
   })
 
-  return { tmux, eventsDir, commands, context, control, approvals, audit, autoSync, hooks, tmuxVersion, terminals, settings }
+  return {
+    tmux,
+    eventsDir,
+    commands,
+    context,
+    control,
+    approvals,
+    audit,
+    autoSync,
+    hooks,
+    tmuxVersion,
+    terminals,
+    settings,
+    claude
+  }
 }
 
 /**
