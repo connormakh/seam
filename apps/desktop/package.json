@@ -4,6 +4,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "Seam desktop app",
+  "license": "MIT",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",

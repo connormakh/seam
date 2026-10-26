@@ -134,6 +134,10 @@ Not there yet:
 - **Signing, notarization, auto-update** — all waiting on a certificate
 - **Windows and Linux** — the tmux and shell plumbing is portable; nothing else has been tried
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Layout
 
 ```text

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "A macOS workspace where Claude Code sessions and your shells share context.",
+  "license": "MIT",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22.12.0"
