@@ -743,6 +743,15 @@ code {
   background: var(--text-muted);
 }
 
+/* A unit with no Claude in it has no status to report, and a filled dot
+   would read as a session sitting idle. Hollow says "this is a shell on its
+   own", which is the question the sidebar gets asked about it. */
+.tab-state[data-state='none'] {
+  background: none;
+  border: 1.5px solid var(--text-muted);
+  opacity: 0.7;
+}
+
 .tab-state[data-state='working'] {
   background: var(--accent);
   animation: tab-pulse 1.4s ease-in-out infinite;

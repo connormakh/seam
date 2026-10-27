@@ -100,7 +100,16 @@ function parse(raw: unknown): SeamSettings {
 export class SettingsStore {
   private current: SeamSettings
 
-  constructor(private readonly file: string) {
+  /**
+   * `home` is the one folder that never becomes a workspace, however a
+   * session comes to be running in it. It is where a session with no
+   * project of its own goes, and listing an account name beside real
+   * projects would say nothing about any of them.
+   */
+  constructor(
+    private readonly file: string,
+    private readonly home = ''
+  ) {
     this.current = this.read()
   }
 
@@ -110,7 +119,7 @@ export class SettingsStore {
 
   /** Note that a folder is being worked in, newest first. */
   rememberWorkspace(root: string, name?: string): Workspace[] {
-    if (!root) return this.current.workspaces
+    if (!root || (this.home !== '' && root === this.home)) return this.current.workspaces
     const rest = this.current.workspaces.filter((w) => w.root !== root)
     const existing = this.current.workspaces.find((w) => w.root === root)
     const workspaces = [{ root, name: name ?? existing?.name ?? basename(root) ?? root }, ...rest]

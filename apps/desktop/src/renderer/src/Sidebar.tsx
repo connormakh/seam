@@ -79,7 +79,7 @@ export function Sidebar({
         aria-current={unit.key === activeKey ? 'true' : undefined}
         className={`ws-session${unit.key === activeKey ? ' ws-session-active' : ''}`}
         title={[
-          isPair(unit) ? 'Claude and shell' : 'Shell',
+          isPair(unit) ? 'Claude and shell' : 'Shell on its own, no Claude',
           status ? SAYS[status.state] : null,
           background ? 'running in the background' : null,
           status?.preview
@@ -93,6 +93,7 @@ export function Sidebar({
         ) : (
           <span className="tab-state" data-state="none" />
         )}
+        {isPair(unit) && <span className="tab-pair" aria-hidden="true" />}
         <span className="ws-session-name">{unitTitle(unit)}</span>
         {shell?.private && <span className="ws-private">private</span>}
         {background && <span className="ws-background">closed</span>}
@@ -119,16 +120,19 @@ export function Sidebar({
             >
               +
             </button>
-            {/* Forgetting is only about the list: nothing running is touched. */}
-            <button
-              className="ws-forget"
-              title="Forget this workspace. Anything running in it keeps running."
-              aria-label={`Forget ${group.workspace.name}`}
-              disabled={!group.workspace.root}
-              onClick={() => onForget(group.workspace.root)}
-            >
-              ×
-            </button>
+            {/* Forgetting is only about the list, so a group that is not in
+                it has nothing to forget: Home, and anything running under a
+                folder that was never opened as a workspace. */}
+            {group.saved && (
+              <button
+                className="ws-forget"
+                title="Forget this workspace. Anything running in it keeps running."
+                aria-label={`Forget ${group.workspace.name}`}
+                onClick={() => onForget(group.workspace.root)}
+              >
+                ×
+              </button>
+            )}
           </header>
           {group.tabs.length + group.background.length === 0 ? (
             <p className="ws-none">nothing open</p>

@@ -15,6 +15,14 @@ describe('settings', () => {
     expect(new SettingsStore(file('new.json')).get()).toEqual(DEFAULTS)
   })
 
+  it('never saves the home folder as a workspace', () => {
+    const home = join(dir, 'home')
+    const store = new SettingsStore(file('home.json'), home)
+    expect(store.rememberWorkspace(home)).toEqual([])
+    // Anything else is remembered as usual, including a folder inside home.
+    expect(store.rememberWorkspace(join(home, 'app')).map((w) => w.name)).toEqual(['app'])
+  })
+
   it('remembers a change across a restart', () => {
     const path = file('round-trip.json')
     new SettingsStore(path).update({ shellOnly: false, autoSyncOff: ['t-1'] })

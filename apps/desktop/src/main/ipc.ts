@@ -135,6 +135,7 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
     version: app.getVersion(),
     platform: process.platform,
     electron: process.versions.electron ?? 'unknown',
+    home: opts.homeDir,
     tmux: rt.tmuxVersion,
     claude: { found: rt.claude.found, version: rt.claude.version, ok: rt.claude.ok, problem: rt.claude.problem }
   }))
@@ -147,11 +148,12 @@ export function registerIpc(rt: Runtime, opts: { homeDir: string }): void {
 
   ipcMain.handle(IPC.terminalList, () => (rt.terminals ? rt.terminals.list() : []))
   ipcMain.handle(IPC.terminalCreate, (_e, opts: unknown) => requireTerminals(rt).create(asCreateOptions(opts)))
-  ipcMain.handle(IPC.terminalCreatePair, async (_e, opts: unknown) => {
-    const options = asCreatePairOptions(opts)
+  ipcMain.handle(IPC.terminalCreatePair, async (_e, payload: unknown) => {
+    const options = asCreatePairOptions(payload)
     const pair = await requireTerminals(rt).createPair(options)
     // Opening a pair on a folder is what makes it a workspace; there is no
     // separate step, because there is nothing else the user would mean.
+    // Home is the exception, which the settings store decides.
     rt.settings.rememberWorkspace(options.cwd)
     return pair
   })

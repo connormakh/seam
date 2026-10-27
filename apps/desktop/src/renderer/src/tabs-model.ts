@@ -79,6 +79,24 @@ export interface WorkspaceGroup {
   tabs: Unit[]
   /** Running, with no tab showing them. */
   background: Unit[]
+  /**
+   * In the remembered list, and so something there is to forget. Home and a
+   * folder from before Seam recorded roots are not: they exist only while
+   * something is running in them.
+   */
+  saved: boolean
+}
+
+/**
+ * What a folder is called in the sidebar and on a tab.
+ *
+ * Home is named for what it is rather than for the last part of its path,
+ * which is the user's account name and tells nobody anything.
+ */
+export function workspaceName(root: string, home: string): string {
+  if (!root) return 'Elsewhere'
+  if (root === home) return 'Home'
+  return root.split('/').filter(Boolean).at(-1) ?? root
 }
 
 /**
@@ -90,15 +108,15 @@ export interface WorkspaceGroup {
  * after, so a terminal can never be invisible just because its workspace
  * was forgotten.
  */
-export function groupByWorkspace(model: TabsModel, workspaces: Workspace[]): WorkspaceGroup[] {
+export function groupByWorkspace(model: TabsModel, workspaces: Workspace[], home = ''): WorkspaceGroup[] {
   const groups = new Map<string, WorkspaceGroup>()
-  for (const w of workspaces) groups.set(w.root, { workspace: w, tabs: [], background: [] })
+  for (const w of workspaces) groups.set(w.root, { workspace: w, tabs: [], background: [], saved: true })
 
   const place = (u: Unit, where: 'tabs' | 'background'): void => {
     const root = unitRoot(u)
     let group = groups.get(root)
     if (!group) {
-      group = { workspace: { root, name: root ? (root.split('/').filter(Boolean).at(-1) ?? root) : 'Elsewhere' }, tabs: [], background: [] }
+      group = { workspace: { root, name: workspaceName(root, home) }, tabs: [], background: [], saved: false }
       groups.set(root, group)
     }
     group[where].push(u)

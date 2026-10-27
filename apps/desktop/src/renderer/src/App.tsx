@@ -18,7 +18,15 @@ import { liveTerminal } from './terminal/registry'
 import { applyTheme, DEFAULT_THEME } from './terminal/themes'
 import { Sidebar } from './Sidebar'
 import { TabBar } from './TabBar'
-import { groupByWorkspace, initialTabs, isPair, nextShellTitle, tabsReducer, type Unit } from './tabs-model'
+import {
+  groupByWorkspace,
+  initialTabs,
+  isPair,
+  nextShellTitle,
+  tabsReducer,
+  workspaceName,
+  type Unit
+} from './tabs-model'
 import { UnitView } from './UnitView'
 
 const api = (): typeof window.seam.terminals => window.seam.terminals
@@ -189,25 +197,40 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
-  const newPair = useCallback(async () => {
-    const cwd = await window.seam.pickFolder()
-    if (cwd) await openPair(cwd)
-  }, [openPair])
-
   /**
-   * Another session in a workspace that already has one. Numbered, because
-   * two tabs with the same folder name tell you nothing about which is which.
+   * A session on a folder, however the folder was chosen.
+   *
+   * Numbered from the second one on, because two tabs with the same folder
+   * name tell you nothing about which is which.
    */
-  const newSessionIn = useCallback(
+  const openSessionIn = useCallback(
     async (root: string) => {
-      const name = root.split('/').filter(Boolean).at(-1) ?? root
+      const name = workspaceName(root, info?.home ?? '')
       const here = modelRef.current.tabs
         .concat(modelRef.current.background)
         .filter((u) => u.members.some((m) => m.root === root)).length
-      await openPair(root, here > 0 ? `${name} ${here + 1}` : undefined)
+      await openPair(root, here > 0 ? `${name} ${here + 1}` : name)
     },
-    [openPair]
+    [info, openPair]
   )
+
+  const newPair = useCallback(async () => {
+    const cwd = await window.seam.pickFolder()
+    if (cwd) await openSessionIn(cwd)
+  }, [openSessionIn])
+
+  /**
+   * A pair with no project behind it, in the home folder.
+   *
+   * For a question that is not about any one repo. Home is never saved as a
+   * workspace, so these come and go without leaving anything in the list.
+   */
+  const newHomePair = useCallback(async () => {
+    // appInfo may not have arrived yet when this comes straight from a
+    // shortcut, and home is the one thing it cannot be guessed without.
+    const home = info?.home ?? (await window.seam.appInfo()).home
+    await openSessionIn(home)
+  }, [info, openSessionIn])
 
   const newShell = useCallback(async () => {
     const m = modelRef.current
@@ -292,6 +315,9 @@ export function App(): React.JSX.Element {
       switch (command.type) {
         case 'new-pair':
           void newPair()
+          break
+        case 'new-home-pair':
+          void newHomePair()
           break
         case 'new-shell':
           void newShell()
@@ -391,7 +417,7 @@ export function App(): React.JSX.Element {
         }
       }
     })
-  }, [closeTab, endUnit, focusActivePane, newPair, newShell, sendLast])
+  }, [closeTab, endUnit, focusActivePane, newHomePair, newPair, newShell, sendLast])
 
   const onFocus = useCallback((id: string) => dispatch({ type: 'focus', id }), [])
 
@@ -482,13 +508,13 @@ export function App(): React.JSX.Element {
 
       {sidebarOpen && (
         <Sidebar
-          groups={groupByWorkspace(model, workspaces)}
+          groups={groupByWorkspace(model, workspaces, info?.home ?? '')}
           activeKey={activeKey}
           statuses={statuses}
           onSelect={(unit, background) =>
             dispatch(background ? { type: 'open-from-background', key: unit.key } : { type: 'activate', key: unit.key })
           }
-          onNewSession={(root) => void newSessionIn(root)}
+          onNewSession={(root) => void openSessionIn(root)}
           onForget={(root) => void window.seam.workspaces.forget(root).then(setWorkspaces)}
           onSettings={() => setSettingsOpen(true)}
           onLeave={focusActivePane}
@@ -550,7 +576,7 @@ export function App(): React.JSX.Element {
                     New pair… <kbd>⌘T</kbd>
                   </button>
                   <button type="button" className="button" onClick={() => void newShell()}>
-                    New shell <kbd>⌘⇧T</kbd>
+                    New shell <kbd>⌘⌃T</kbd>
                   </button>
                 </div>
                 {background.length > 0 && (

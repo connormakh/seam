@@ -61,6 +61,8 @@ export const IPC = {
 /** Commands the application menu (and its shortcuts) sends to the window. */
 export type MenuCommand =
   | { type: 'new-pair' }
+  /** A Claude and shell pair in the home folder, with no folder to pick. */
+  | { type: 'new-home-pair' }
   | { type: 'new-shell' }
   | { type: 'toggle-focus' }
   /** A pair reads left to right as Claude, then shell. */
@@ -88,6 +90,8 @@ export interface AppInfo {
   version: string
   platform: string
   electron: string
+  /** Where a session with no project of its own runs. Never a workspace. */
+  home: string
   tmux: string | null
   /** Claude Code as found at startup, so a missing one is said once and plainly. */
   claude: { found: boolean; version: string | null; ok: boolean; problem: string | null }

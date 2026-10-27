@@ -86,7 +86,7 @@ export interface RuntimeSettings {
 export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   // Asked once, through the login shell, because that is how Claude is started.
   const claude = await checkClaude(userShell())
-  const store = new SettingsStore(join(o.userDataDir, 'settings.json'))
+  const store = new SettingsStore(join(o.userDataDir, 'settings.json'), o.homeDir)
   // The shell is the one terminal both the user and Claude work in, so a
   // command Claude runs belongs there and not in a hidden subprocess, which
   // is why it defaults on. SEAM_SHELL_ONLY overrides the saved value for one

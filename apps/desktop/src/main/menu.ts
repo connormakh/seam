@@ -65,9 +65,18 @@ export function installMenu(
           click: () => send({ type: 'new-pair' })
         },
         {
+          // For a question that is not about a project: no folder to pick,
+          // and nothing added to the workspace list afterwards.
+          id: 'new-home-pair',
+          label: 'New Session in Home',
+          accelerator: mac ? 'Cmd+Shift+T' : 'Ctrl+Shift+Alt+T',
+          click: () => send({ type: 'new-home-pair' })
+        },
+        {
+          // A terminal on its own, with no Claude beside it.
           id: 'new-shell',
           label: 'New Shell',
-          accelerator: mac ? 'Cmd+Shift+T' : 'Ctrl+Shift+Alt+T',
+          accelerator: mac ? 'Cmd+Ctrl+T' : 'Ctrl+Alt+T',
           click: () => send({ type: 'new-shell' })
         },
         { type: 'separator' },

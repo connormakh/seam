@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TerminalInfo, Workspace } from '@shared/ipc'
-import { groupByWorkspace, makeUnit, type TabsModel } from '../src/renderer/src/tabs-model'
+import { groupByWorkspace, makeUnit, workspaceName, type TabsModel } from '../src/renderer/src/tabs-model'
 
 const term = (id: string, root: string, kind: TerminalInfo['kind'] = 'claude'): TerminalInfo => ({
   id,
@@ -68,5 +68,28 @@ describe('grouping sessions by workspace', () => {
 
   it('lists no empty group for a workspace that was never saved', () => {
     expect(groupByWorkspace(model([]), [])).toEqual([])
+  })
+
+  it('says which groups are in the saved list, and so have something to forget', () => {
+    const groups = groupByWorkspace(model([[term('a1', '/w/app')], [term('x1', '/w/scratch')]]), saved)
+    expect(groups.map((g) => [g.workspace.root, g.saved])).toEqual([
+      ['/w/app', true],
+      ['/w/docs', true],
+      ['/w/scratch', false]
+    ])
+  })
+
+  it('calls the home folder Home, not the account name it is named after', () => {
+    expect(workspaceName('/Users/c', '/Users/c')).toBe('Home')
+    expect(workspaceName('/w/app', '/Users/c')).toBe('app')
+    expect(workspaceName('', '/Users/c')).toBe('Elsewhere')
+    // No home to compare against: a folder is still named for itself.
+    expect(workspaceName('/Users/c', '')).toBe('c')
+  })
+
+  it('groups sessions with no project under Home, after the saved workspaces', () => {
+    const groups = groupByWorkspace(model([[term('a1', '/w/app')], [term('h1', '/Users/c')]]), saved, '/Users/c')
+    expect(groups.at(-1)).toMatchObject({ workspace: { root: '/Users/c', name: 'Home' }, saved: false })
+    expect(groups.at(-1)!.tabs.map((u) => u.key)).toEqual(['h1'])
   })
 })

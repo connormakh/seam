@@ -60,6 +60,7 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 ### Around it
 
 - **Workspaces.** A sidebar groups sessions by the folder they were opened on. A workspace outlives everything running in it, and holds as many sessions as you want.
+- **Sessions with no project.** ⌘⇧T opens a pair in your home folder for a question that is not about any one repo. They are grouped under **Home**, which is never saved as a workspace however you get there, so scratch work leaves nothing in the list.
 - **Status.** A dot on each tab: working, waiting for you, idle.
 - **Activity** (⌘⇧A). Every tool call Claude has made, with times and outcomes.
 - **Private shells.** One click keeps a shell out of Claude's reach entirely: not listed, not readable, not writable. For the one holding credentials.
@@ -72,7 +73,8 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 | Shortcut | Action |
 | --- | --- |
 | ⌘T | New Claude + shell pair (pick a folder) |
-| ⌘⇧T | New shell |
+| ⌘⇧T | New pair in your home folder, no folder to pick |
+| ⌘⌃T | New shell on its own, in your home folder |
 | ⌃` | Switch focus between Claude and the shell |
 | ⌘[ / ⌘] | Focus Claude / focus the shell |
 | ⌘⇧↩ | Send the shell's last command to Claude |
@@ -127,13 +129,14 @@ Running an agent in your real shell deserves a straight answer about what stops 
 
 - **Shell output is untrusted.** It can contain anything a program printed, including text written to look like an instruction. Seam tags it as data; that reduces the risk but does not remove it, which is why the denylist exists.
 - **A session only reaches its own workspace.** Tokens are bound to the folder the pair was opened on; a session cannot touch another project's shells.
+- **Home is one workspace, so sessions in it share shells.** A pair opened with ⌘⇧T can read and type into every other home-rooted terminal, which includes the standalone shells ⌘⌃T opens. That is the same rule as any other folder, but home is the one you land in without choosing it. Mark anything you want kept out of reach as a private shell.
 - **Private shells are invisible**, including to `list_shells`.
 - **Everything is recorded.** The Activity panel is the answer to what Claude did, after the fact, rather than a prompt before it.
 - **Unsigned builds.** You are running code you built. Read it.
 
 ## Status
 
-The terminal, both directions of context sharing, and packaging are in. 195 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
+The terminal, both directions of context sharing, and packaging are in. 199 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
 
 Not there yet:
 
