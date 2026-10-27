@@ -69,6 +69,8 @@ export type MenuCommand =
   | { type: 'attach-last' }
   | { type: 'toggle-activity' }
   | { type: 'toggle-sidebar' }
+  /** Put the keyboard in the sidebar, opening it first if it is closed. */
+  | { type: 'focus-sidebar' }
   | { type: 'open-settings' }
   /** Wipe the visible screen and the scrollback of the active tab's panes. */
   | { type: 'clear-screen' }
@@ -78,6 +80,8 @@ export type MenuCommand =
   | { type: 'close-tab' }
   | { type: 'end-terminal' }
   | { type: 'select-tab'; index: number }
+  /** One tab along, wrapping round: the keyboard way through the tab bar. */
+  | { type: 'select-tab-relative'; delta: number }
 
 export interface AppInfo {
   name: string

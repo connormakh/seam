@@ -36,6 +36,8 @@ export type TabsAction =
   | { type: 'refresh'; terminals: TerminalInfo[] }
   | { type: 'activate'; key: string }
   | { type: 'select-index'; index: number }
+  /** One tab along from the active one, wrapping round at either end. */
+  | { type: 'select-relative'; delta: number }
   | { type: 'remount'; id: string }
   | { type: 'focus'; id: string }
   | { type: 'toggle-focus' }
@@ -214,6 +216,17 @@ export function tabsReducer(state: TabsModel, action: TabsAction): TabsModel {
 
     case 'select-index': {
       const tab = state.tabs[action.index]
+      return tab ? { ...state, activeKey: tab.key } : state
+    }
+
+    case 'select-relative': {
+      if (state.tabs.length === 0) return state
+      const at = state.tabs.findIndex((t) => t.key === state.activeKey)
+      // With no active tab, a step forwards means the first and back the last.
+      const from = at === -1 ? (action.delta > 0 ? -1 : 0) : at
+      const n = state.tabs.length
+      const next = (((from + action.delta) % n) + n) % n
+      const tab = state.tabs[next]
       return tab ? { ...state, activeKey: tab.key } : state
     }
 

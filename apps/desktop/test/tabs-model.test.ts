@@ -129,6 +129,21 @@ describe('tabsReducer', () => {
     expect(tabsReducer(restored, { type: 'select-index', index: 1 }).activeKey).toBe('c1')
     expect(tabsReducer(restored, { type: 'select-index', index: 8 })).toBe(restored)
   })
+
+  it('steps one tab along, wrapping round at either end', () => {
+    // restored has two tabs, 'a' then 'c1', with 'a' active.
+    const next = tabsReducer(restored, { type: 'select-relative', delta: 1 })
+    expect(next.activeKey).toBe('c1')
+    expect(tabsReducer(next, { type: 'select-relative', delta: 1 }).activeKey).toBe('a')
+    expect(tabsReducer(restored, { type: 'select-relative', delta: -1 }).activeKey).toBe('c1')
+  })
+
+  it('steps into the list from no active tab, and does nothing with no tabs', () => {
+    const none = { ...restored, activeKey: null }
+    expect(tabsReducer(none, { type: 'select-relative', delta: 1 }).activeKey).toBe('a')
+    expect(tabsReducer(none, { type: 'select-relative', delta: -1 }).activeKey).toBe('c1')
+    expect(tabsReducer(initialTabs, { type: 'select-relative', delta: 1 })).toBe(initialTabs)
+  })
 })
 
 describe('nextShellTitle', () => {

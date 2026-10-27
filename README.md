@@ -81,12 +81,16 @@ A command that has not finished is watched rather than waited for. Leave `npm ru
 | ⌘C / ⌘A | Copy the selection in the pane you are in / select its screen |
 | ⌘⇧A | Activity |
 | ⌘⌃S | Workspaces sidebar |
+| ⌘0 | Go to the sidebar (opens it first if it is closed) |
 | ⌘, | Settings (also the button at the bottom of the sidebar) |
 | ⌘W | Close tab (its terminals keep running) |
 | ⌘⇧W | End the tab and its terminals |
 | ⌘1–⌘9 | Switch tabs |
+| ⌘⇧[ / ⌘⇧] | Previous / next tab |
 
 Every shortcut lives in the application menu, so they are all discoverable under File, Shell and Window.
+
+Once you are in Seam's own chrome the keyboard works the way you would expect: arrow keys move through the sidebar's sessions and the tab bar, Enter opens the one you are on, Tab reaches every button, and **Escape hands the keyboard back to the terminal**. A panel takes the focus when you open it and gives it back when you close it, so you never end up typing into nothing. Escape pressed *in* a terminal still belongs to the program there, which is what Claude's TUI and vim need.
 
 ## Building it
 
@@ -129,7 +133,7 @@ Running an agent in your real shell deserves a straight answer about what stops 
 
 ## Status
 
-The terminal, both directions of context sharing, and packaging are in. 193 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
+The terminal, both directions of context sharing, and packaging are in. 195 tests, most of them driving a real tmux, real shells and real ptys rather than mocks.
 
 Not there yet:
 

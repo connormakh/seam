@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppInfo, PolicyMode, SeamSettingsView, ThemeName } from '@shared/ipc'
+import { firstFocusable, focusWhenReady, trapTab } from './focus'
 import { THEMES, THEME_NAMES } from './terminal/themes'
 
 interface Props {
@@ -27,6 +28,8 @@ const MODES: { value: PolicyMode; label: string; what: string }[] = [
 export function Settings({ info, theme, onTheme, onClose }: Props): React.JSX.Element {
   const [settings, setSettings] = useState<SeamSettingsView | null>(null)
   const [prefixes, setPrefixes] = useState('')
+  const dialog = useRef<HTMLDivElement>(null)
+  const body = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void window.seam.settings.get().then((s) => {
@@ -35,13 +38,19 @@ export function Settings({ info, theme, onTheme, onClose }: Props): React.JSX.El
     })
   }, [])
 
+  // The dialog takes the keyboard when it opens, so Escape and Tab below
+  // have something to act on. Listening on the window instead would make
+  // Escape in a pane close the dialog, and Escape belongs to Claude's TUI
+  // and to vim.
+  //
+  // Twice: once on the empty dialog, which has nothing to focus but itself,
+  // and again when the settings arrive and the controls exist.
+  const loaded = settings !== null
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    // The body, not the header: the first thing in the dialog is the close
+    // button, and landing on that makes Enter shut what was just opened.
+    focusWhenReady(() => firstFocusable(body.current) ?? dialog.current)
+  }, [loaded])
 
   const save = (patch: Partial<SeamSettingsView>): void => {
     void window.seam.settings.set(patch).then((s) => setSettings(s))
@@ -49,7 +58,18 @@ export function Settings({ info, theme, onTheme, onClose }: Props): React.JSX.El
 
   return (
     <div className="settings-backdrop" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div className="settings" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="settings"
+        ref={dialog}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          } else if (e.key === 'Tab') trapTab(e, dialog.current)
+        }}
+      >
         <header className="settings-header">
           <h2>Settings</h2>
           <button className="activity-close" onClick={onClose} title="Close (Esc)" aria-label="Close settings">
@@ -60,7 +80,7 @@ export function Settings({ info, theme, onTheme, onClose }: Props): React.JSX.El
         {settings === null ? (
           <p className="settings-note">Loading…</p>
         ) : (
-          <div className="settings-body">
+          <div className="settings-body" ref={body}>
             <section className="settings-group">
               <h3>Appearance</h3>
               <div className="theme-grid">

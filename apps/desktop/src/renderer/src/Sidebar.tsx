@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { SessionStatus } from '@shared/ipc'
 import { isPair, unitTitle, type Unit, type WorkspaceGroup } from './tabs-model'
 
@@ -9,6 +10,8 @@ interface Props {
   onNewSession(root: string): void
   onForget(root: string): void
   onSettings(): void
+  /** Escape: the keyboard goes back to the terminal it came from. */
+  onLeave(): void
 }
 
 const SAYS: Record<SessionStatus['state'], string> = {
@@ -31,8 +34,38 @@ export function Sidebar({
   onSelect,
   onNewSession,
   onForget,
-  onSettings
+  onSettings,
+  onLeave
 }: Props): React.JSX.Element {
+  const listRef = useRef<HTMLElement>(null)
+
+  /**
+   * Up and down walk the sessions, across workspaces, because what the eye
+   * sees is one list however it is grouped. Arrowing only moves the
+   * keyboard; Enter opens, so passing over a session does not attach a
+   * terminal nobody asked for.
+   */
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onLeave()
+      return
+    }
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-nav-row]') ?? [])]
+    if (rows.length === 0) return
+    // -1 while the keyboard is on a workspace's own buttons, from where
+    // down means the first session and up the last.
+    const at = rows.indexOf(document.activeElement as HTMLElement)
+    const go = (to: number): void => {
+      e.preventDefault()
+      rows[Math.max(0, Math.min(rows.length - 1, to))]?.focus()
+    }
+    if (e.key === 'ArrowDown') go(at + 1)
+    else if (e.key === 'ArrowUp') go(at === -1 ? rows.length - 1 : at - 1)
+    else if (e.key === 'Home') go(0)
+    else if (e.key === 'End') go(rows.length - 1)
+  }
+
   const row = (unit: Unit, background: boolean): React.JSX.Element => {
     const claude = unit.members.find((m) => m.kind === 'claude')
     const status = claude ? statuses[claude.id] : undefined
@@ -40,6 +73,10 @@ export function Sidebar({
     return (
       <button
         key={unit.key}
+        data-nav-row={unit.key}
+        // Only the open one is a Tab stop; the arrows reach the rest.
+        tabIndex={unit.key === activeKey ? 0 : -1}
+        aria-current={unit.key === activeKey ? 'true' : undefined}
         className={`ws-session${unit.key === activeKey ? ' ws-session-active' : ''}`}
         title={[
           isPair(unit) ? 'Claude and shell' : 'Shell',
@@ -64,7 +101,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar" aria-label="Workspaces">
+    <aside className="sidebar" aria-label="Workspaces" ref={listRef} onKeyDown={onKeyDown}>
       <div className="sidebar-scroll">
       {groups.length === 0 && <p className="ws-empty">No workspaces yet. ⌘T opens one.</p>}
       {groups.map((group) => (

@@ -108,6 +108,14 @@ export function installMenu(
           click: () => send({ type: 'toggle-sidebar' })
         },
         {
+          // Showing the sidebar and getting into it are different wishes:
+          // one is to read the status dots, the other to pick a session.
+          id: 'focus-sidebar',
+          label: 'Go to Workspaces',
+          accelerator: mac ? 'Cmd+0' : 'Ctrl+Shift+0',
+          click: () => send({ type: 'focus-sidebar' })
+        },
+        {
           id: 'toggle-activity',
           label: 'Activity',
           accelerator: key('A', 'Shift+'),
@@ -193,6 +201,19 @@ export function installMenu(
           label: 'Focus Shell',
           accelerator: mac ? 'Cmd+]' : 'Ctrl+]',
           click: () => send({ type: 'focus-side', side: 'right' })
+        },
+        { type: 'separator' },
+        {
+          id: 'prev-tab',
+          label: 'Previous Tab',
+          accelerator: mac ? 'Cmd+Shift+[' : 'Ctrl+Shift+PageUp',
+          click: () => send({ type: 'select-tab-relative', delta: -1 })
+        },
+        {
+          id: 'next-tab',
+          label: 'Next Tab',
+          accelerator: mac ? 'Cmd+Shift+]' : 'Ctrl+Shift+PageDown',
+          click: () => send({ type: 'select-tab-relative', delta: 1 })
         },
         { type: 'separator' },
         { role: 'minimize' },

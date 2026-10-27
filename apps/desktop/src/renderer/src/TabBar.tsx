@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { SessionStatus } from '@shared/ipc'
 import { isPair, unitTitle, type Unit } from './tabs-model'
 
@@ -18,9 +19,35 @@ interface Props {
 }
 
 export function TabBar({ tabs, statuses, activeKey, onSelect, onClose, onNewPair }: Props): React.JSX.Element {
+  const listRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Left and right walk the tabs, Enter opens the one you land on. Moving
+   * the keyboard without opening is the slower half of the ARIA pattern and
+   * the right one here: passing over a tab would attach its terminals.
+   */
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    const stops = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-nav-tab]') ?? [])]
+    const at = stops.indexOf(document.activeElement as HTMLElement)
+    if (at === -1) return
+    const go = (to: number): void => {
+      e.preventDefault()
+      stops[Math.max(0, Math.min(stops.length - 1, to))]?.focus()
+    }
+    if (e.key === 'ArrowRight') go(at + 1)
+    else if (e.key === 'ArrowLeft') go(at - 1)
+    else if (e.key === 'Home') go(0)
+    else if (e.key === 'End') go(stops.length - 1)
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      const key = stops[at]?.dataset.navTab
+      if (key) onSelect(key)
+    }
+  }
+
   return (
     <nav className="tabbar" aria-label="Tabs">
-      <div className="tabs" role="tablist">
+      <div className="tabs" role="tablist" ref={listRef} onKeyDown={onKeyDown}>
         {tabs.map((t, i) => {
           const title = unitTitle(t)
           const cwd = t.members[0]?.cwd ?? ''
@@ -30,6 +57,9 @@ export function TabBar({ tabs, statuses, activeKey, onSelect, onClose, onNewPair
             <div
               key={t.key}
               role="tab"
+              data-nav-tab={t.key}
+              // Only the open tab is a Tab stop; the arrows reach the rest.
+              tabIndex={t.key === activeKey ? 0 : -1}
               aria-selected={t.key === activeKey}
               className={`tab${t.key === activeKey ? ' tab-active' : ''}`}
               onMouseDown={(e) => {

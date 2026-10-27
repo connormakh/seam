@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { AuditEntry, PolicyMode } from '@shared/ipc'
+import { focusWhenReady } from './focus'
 
 interface Props {
   entries: AuditEntry[]
@@ -43,16 +44,24 @@ export function ActivityPanel({
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [entries])
 
+  // The list takes the keyboard when the panel opens, so the arrows and
+  // Page keys scroll the log straight away and Escape has somewhere to act
+  // from. Listening on the window instead would make Escape in a pane close
+  // the panel, and Escape belongs to Claude's TUI and to vim.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    focusWhenReady(() => listRef.current)
+  }, [])
 
   return (
-    <aside className="activity" aria-label="Claude activity">
+    <aside
+      className="activity"
+      aria-label="Claude activity"
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        e.preventDefault()
+        onClose()
+      }}
+    >
       <header className="activity-header">
         <span className="activity-title">Activity</span>
         <span className="activity-count">{entries.length > 0 ? `${entries.length}` : ''}</span>
@@ -94,6 +103,12 @@ export function ActivityPanel({
       <div
         className="activity-list"
         ref={listRef}
+        // A scrollable region is a place the keyboard has to be able to get
+        // to, or the log can only be read with the mouse.
+        tabIndex={0}
+        role="log"
+        aria-label="Tool calls"
+
         onScroll={(e) => {
           const el = e.currentTarget
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24

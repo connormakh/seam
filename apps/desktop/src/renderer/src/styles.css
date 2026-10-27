@@ -20,6 +20,37 @@
   box-sizing: border-box;
 }
 
+/*
+ * Keyboard focus has to be visible wherever it can land, or arrowing through
+ * the chrome is guesswork. :focus-visible, so clicking a button does not
+ * leave a ring behind it.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* A pane shows its own focus, on the header, and xterm's input is a
+   one-character textarea that a ring would only draw attention to. */
+.terminal-host :focus-visible {
+  outline: none;
+}
+
+/* The log scrolls with the arrows once focused, which is the only reason it
+   takes focus at all: an inset ring says so without moving the rows. */
+.activity-list:focus-visible {
+  outline-offset: -2px;
+}
+
+/* These sit flush against an edge or a neighbour, so the ring goes inside
+   them rather than off the side of the window or under the next one. */
+.ws-session:focus-visible,
+.tab:focus-visible,
+.sidebar-settings:focus-visible {
+  outline-offset: -2px;
+}
+
 html,
 body,
 #root {
@@ -576,11 +607,6 @@ code {
 /* Deny is the one that needs no thought, so it is the one that looks safe. */
 .approval-deny {
   margin-right: auto;
-}
-
-.approval-deny:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .approval-approve {

@@ -13,6 +13,7 @@ import type {
 import { ActivityPanel } from './ActivityPanel'
 import { BackgroundList, BackgroundMenu } from './BackgroundMenu'
 import { Settings } from './Settings'
+import { focusedTerminalId, focusPane, focusWhenReady } from './focus'
 import { liveTerminal } from './terminal/registry'
 import { applyTheme, DEFAULT_THEME } from './terminal/themes'
 import { Sidebar } from './Sidebar'
@@ -273,17 +274,21 @@ export function App(): React.JSX.Element {
     })
   }, [closeTab])
 
+  /**
+   * Hand the keyboard back to the pane in front.
+   *
+   * Every panel that takes the focus has to give it back, or closing one
+   * leaves the keyboard on nothing and the next keystroke goes nowhere.
+   */
+  const focusActivePane = useCallback((): void => {
+    const m = modelRef.current
+    focusPane(m.tabs.find((u) => u.key === m.activeKey)?.focusId)
+  }, [])
+
   // Shortcuts live in the application menu (main), which sends commands here.
   useEffect(() => {
     return window.seam.onMenuCommand((command) => {
       const activeKey = modelRef.current.activeKey
-      // Where the keyboard is decides what an edit command means: with the
-      // focus in Seam's own chrome, a settings field say, it means that
-      // field and not whatever is still selected in the pane behind it.
-      const focusedTerminal = (): string | null => {
-        const host = document.activeElement?.closest('.terminal-host')
-        return host instanceof HTMLElement ? (host.dataset.terminalId ?? null) : null
-      }
       switch (command.type) {
         case 'new-pair':
           void newPair()
@@ -301,28 +306,58 @@ export function App(): React.JSX.Element {
           dispatch({ type: 'select-index', index: command.index })
           break
         case 'toggle-focus':
-          dispatch({ type: 'toggle-focus' })
+          // From Seam's own chrome this means back to the terminal: there
+          // was nothing in a pane to switch away from.
+          if (focusedTerminalId() === null) focusActivePane()
+          else dispatch({ type: 'toggle-focus' })
           break
         case 'focus-side': {
           const unit = modelRef.current.tabs.find((u) => u.key === activeKey)
           // members are ordered Claude first, which is how the pair is drawn.
           const target = unit?.members[command.side === 'left' ? 0 : 1]
-          if (target) dispatch({ type: 'focus', id: target.id })
+          if (!target) break
+          dispatch({ type: 'focus', id: target.id })
+          // Said outright, because naming the side that already has it is
+          // how you get back from the sidebar, and that changes no state
+          // for a view to react to.
+          focusPane(target.id)
           break
         }
+        case 'select-tab-relative':
+          dispatch({ type: 'select-relative', delta: command.delta })
+          break
         case 'toggle-activity':
-          setActivityOpen((open) => !open)
+          setActivityOpen((open) => {
+            if (open) focusActivePane()
+            return !open
+          })
           break
         case 'toggle-sidebar':
-          setSidebarOpen((open) => !open)
+          setSidebarOpen((open) => {
+            if (open) focusActivePane()
+            return !open
+          })
+          break
+        case 'focus-sidebar':
+          setSidebarOpen(true)
+          // The sidebar may be mounting on this very command, so the row to
+          // focus does not exist yet.
+          focusWhenReady(
+            () =>
+              document.querySelector<HTMLElement>('[data-nav-row][aria-current="true"]') ??
+              document.querySelector<HTMLElement>('[data-nav-row]')
+          )
           break
         case 'open-settings':
-          setSettingsOpen((open) => !open)
+          setSettingsOpen((open) => {
+            if (open) focusActivePane()
+            return !open
+          })
           break
         case 'copy': {
           // A pane's selection lives inside its xterm instance, where the
           // native copy cannot see it.
-          const term = liveTerminal(focusedTerminal())
+          const term = liveTerminal(focusedTerminalId())
           const text = term?.hasSelection() ? term.getSelection() : ''
           if (text) void window.seam.edit.copy(text)
           else window.seam.edit.nativeCopy()
@@ -331,7 +366,7 @@ export function App(): React.JSX.Element {
         case 'select-all': {
           // Select All in a pane means that pane, not every pane at once,
           // which is what the native command would reach for.
-          const term = liveTerminal(focusedTerminal())
+          const term = liveTerminal(focusedTerminalId())
           if (term) term.selectAll()
           else window.seam.edit.nativeSelectAll()
           break
@@ -356,7 +391,7 @@ export function App(): React.JSX.Element {
         }
       }
     })
-  }, [closeTab, endUnit, newPair, newShell, sendLast])
+  }, [closeTab, endUnit, focusActivePane, newPair, newShell, sendLast])
 
   const onFocus = useCallback((id: string) => dispatch({ type: 'focus', id }), [])
 
@@ -438,7 +473,10 @@ export function App(): React.JSX.Element {
             window.seam.policy.set(focusedRoot, mode)
             setPolicy(mode)
           }}
-          onClose={() => setActivityOpen(false)}
+          onClose={() => {
+            setActivityOpen(false)
+            focusActivePane()
+          }}
         />
       )}
 
@@ -453,11 +491,20 @@ export function App(): React.JSX.Element {
           onNewSession={(root) => void newSessionIn(root)}
           onForget={(root) => void window.seam.workspaces.forget(root).then(setWorkspaces)}
           onSettings={() => setSettingsOpen(true)}
+          onLeave={focusActivePane}
         />
       )}
 
       {settingsOpen && (
-        <Settings info={info} theme={theme} onTheme={setTheme} onClose={() => setSettingsOpen(false)} />
+        <Settings
+          info={info}
+          theme={theme}
+          onTheme={setTheme}
+          onClose={() => {
+            setSettingsOpen(false)
+            focusActivePane()
+          }}
+        />
       )}
 
       {claudeProblem && (
